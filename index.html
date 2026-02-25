@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexus P2P | Large File Streamer</title>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/web-streams-polyfill@2.0.2/dist/ponyfill.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/streamsaver@2.0.3/StreamSaver.min.js"></script>
+    <style>
+        :root { --bg: #0d1117; --card: #161b22; --border: #30363d; --blue: #58a6ff; --green: #238636; }
+        body { font-family: system-ui, sans-serif; background: var(--bg); color: #c9d1d9; display: flex; flex-direction: column; align-items: center; padding: 40px; margin: 0; }
+        .box { background: var(--card); border: 1px solid var(--border); padding: 30px; border-radius: 12px; width: 100%; max-width: 420px; text-align: center; box-sizing: border-box; }
+        .view { display: none; } 
+        .active { display: block; }
+        .status-pill { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; margin-bottom: 20px; border: 1px solid var(--border); color: #8b949e; }
+        .online { border-color: var(--green); color: var(--green); }
+        button { background: var(--blue); color: #0d1117; border: none; padding: 14px; border-radius: 6px; cursor: pointer; width: 100%; font-weight: bold; margin: 8px 0; font-size: 15px; }
+        .btn-green { background: var(--green); color: white; }
+        .btn-back { background: transparent; color: #8b949e; border: 1px solid var(--border); margin-top: 15px; }
+        input { background: #010409; border: 1px solid var(--border); color: white; padding: 12px; border-radius: 6px; width: 100%; box-sizing: border-box; margin: 10px 0; text-align: center; font-size: 18px; }
+        .code-display { font-size: 32px; color: var(--blue); margin: 20px 0; font-family: monospace; letter-spacing: 4px; border: 1px dashed var(--border); padding: 10px; }
+        #log { font-size: 12px; color: #8b949e; margin-top: 25px; text-align: left; max-height: 200px; overflow-y: auto; }
+        progress { width: 100%; height: 12px; display: none; margin-top: 10px; border-radius: 10px; }
+        #speed-tag { font-size: 10px; color: var(--blue); margin-top: 5px; }
+    </style>
+</head>
+<body>
+    <div class="box">
+        <div id="status" class="status-pill">CONNECTING...</div>
+
+        <div id="step-1" class="view active">
+            <h3>Network Path</h3>
+            <button id="net-local">🏠 Local Network</button>
+            <button id="net-internet">🌍 Over Internet</button>
+        </div>
+
+        <div id="step-2" class="view">
+            <h3 id="network-title">Role</h3>
+            <button id="role-send" class="btn-green">📤 Send File</button>
+            <button id="role-receive" class="btn-green">📥 Receive File</button>
+            <button id="back-to-1" class="btn-back">← Back</button>
+        </div>
+
+        <div id="step-send" class="view">
+            <h3>Sender</h3>
+            <div id="send-code-display" class="code-display">------</div>
+            <input type="file" id="file-pick">
+            <button id="start-transfer">🚀 Start Stream</button>
+            <progress id="prog-bar" value="0" max="100"></progress>
+            <div id="speed-tag"></div>
+            <button class="btn-back cancel-btn">← Cancel</button>
+        </div>
+
+        <div id="step-receive" class="view">
+            <h3>Receiver</h3>
+            <input type="text" id="input-code" placeholder="Enter 6-Digit Code">
+            <button id="join-btn">🤝 Connect</button>
+            <div id="receive-status" style="margin-top:10px; font-size: 13px;">Waiting...</div>
+            <button class="btn-back cancel-btn">← Cancel</button>
+        </div>
+
+        <div id="log"></div>
+    </div>
+    <script src="main.js"></script>
+</body>
+</html>
