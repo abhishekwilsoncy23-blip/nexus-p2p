@@ -3,65 +3,180 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nexus P2P | Large File Streamer</title>
+    <title>PeerDrop | Secure File Transfer</title>
+    
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/web-streams-polyfill@2.0.2/dist/ponyfill.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/streamsaver@2.0.3/StreamSaver.min.js"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+    <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
+
     <style>
-        :root { --bg: #0d1117; --card: #161b22; --border: #30363d; --blue: #58a6ff; --green: #238636; }
-        body { font-family: system-ui, sans-serif; background: var(--bg); color: #c9d1d9; display: flex; flex-direction: column; align-items: center; padding: 40px; margin: 0; }
-        .box { background: var(--card); border: 1px solid var(--border); padding: 30px; border-radius: 12px; width: 100%; max-width: 420px; text-align: center; box-sizing: border-box; }
-        .view { display: none; } 
-        .active { display: block; }
-        .status-pill { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: bold; margin-bottom: 20px; border: 1px solid var(--border); color: #8b949e; }
-        .online { border-color: var(--green); color: var(--green); }
-        button { background: var(--blue); color: #0d1117; border: none; padding: 14px; border-radius: 6px; cursor: pointer; width: 100%; font-weight: bold; margin: 8px 0; font-size: 15px; }
-        .btn-green { background: var(--green); color: white; }
-        .btn-back { background: transparent; color: #8b949e; border: 1px solid var(--border); margin-top: 15px; }
-        input { background: #010409; border: 1px solid var(--border); color: white; padding: 12px; border-radius: 6px; width: 100%; box-sizing: border-box; margin: 10px 0; text-align: center; font-size: 18px; }
-        .code-display { font-size: 32px; color: var(--blue); margin: 20px 0; font-family: monospace; letter-spacing: 4px; border: 1px dashed var(--border); padding: 10px; }
-        #log { font-size: 12px; color: #8b949e; margin-top: 25px; text-align: left; max-height: 200px; overflow-y: auto; }
-        progress { width: 100%; height: 12px; display: none; margin-top: 10px; border-radius: 10px; }
-        #speed-tag { font-size: 10px; color: var(--blue); margin-top: 5px; }
+        :root {
+            --bg: #09090b;           
+            --surface: #18181b;      
+            --border: #27272a;       
+            --primary: #3b82f6;      
+            --primary-hover: #2563eb;
+            --success: #10b981;      
+            --success-hover: #059669;
+            --text-main: #f8fafc;
+            --text-muted: #a1a1aa;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif; background-color: var(--bg); color: var(--text-main);
+            display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0;
+            background-image: radial-gradient(circle at top, rgba(59, 130, 246, 0.05), transparent 40%);
+        }
+
+        .box {
+            background: var(--surface); border: 1px solid var(--border); padding: 40px;
+            border-radius: 16px; width: 100%; max-width: 460px; text-align: center;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); box-sizing: border-box;
+        }
+
+        /* Branding */
+        .brand { font-size: 1.5rem; font-weight: 600; color: var(--text-main); margin-bottom: 24px; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        .brand i { color: var(--primary); font-size: 1.8rem; }
+
+        /* View Transitions */
+        .view { display: none; opacity: 0; transform: translateY(10px); }
+        .view.active { display: block; animation: fadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        @keyframes fadeUp { to { opacity: 1; transform: translateY(0); } }
+
+        h3 { margin-top: 0; margin-bottom: 24px; font-weight: 600; font-size: 1.15rem; color: var(--text-main); }
+
+        /* Status Pill */
+        .status-pill {
+            display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 20px; font-size: 0.75rem; font-weight: 600;
+            letter-spacing: 0.5px; margin-bottom: 30px; background: rgba(161, 161, 170, 0.1); color: var(--text-muted); border: 1px solid var(--border);
+            transition: all 0.3s ease;
+        }
+        .status-pill.online { background: rgba(16, 185, 129, 0.1); color: var(--success); border-color: rgba(16, 185, 129, 0.3); box-shadow: 0 0 15px rgba(16, 185, 129, 0.1); }
+
+        /* Instructions Banner */
+        .instructions {
+            display: flex; justify-content: space-between; background: rgba(0,0,0,0.2); border: 1px solid var(--border);
+            padding: 12px 16px; border-radius: 8px; margin-bottom: 24px; font-size: 0.75rem; color: var(--text-muted);
+        }
+        .instructions .step { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; }
+        .instructions .step i { font-size: 1.2rem; color: var(--primary); }
+
+        /* Drag & Drop Zone */
+        .drop-zone {
+            border: 2px dashed var(--border); border-radius: 12px; padding: 30px 20px; text-align: center;
+            background: rgba(0,0,0,0.2); cursor: pointer; transition: all 0.3s ease; margin-bottom: 20px;
+        }
+        .drop-zone:hover { border-color: var(--primary); background: rgba(59, 130, 246, 0.05); }
+        .drop-zone i { font-size: 2.5rem; color: var(--primary); margin-bottom: 10px; display: block; }
+        .drop-zone p { margin: 0 0 5px 0; font-weight: 500; font-size: 1rem; color: var(--text-main); }
+        .drop-zone span { font-size: 0.8rem; color: var(--text-muted); }
+        
+        #file-name-display {
+            display: none; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3);
+            color: var(--success); padding: 14px; border-radius: 8px; margin-bottom: 20px; font-size: 0.9rem; font-weight: 500; word-break: break-all;
+        }
+
+        /* Buttons */
+        button {
+            display: flex; align-items: center; justify-content: center; gap: 10px; background: var(--surface); color: var(--text-main);
+            border: 1px solid var(--border); padding: 14px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: 500; margin: 10px 0; font-size: 0.95rem; transition: all 0.2s ease;
+        }
+        button:hover { background: #27272a; border-color: #3f3f46; }
+        button.btn-primary { background: var(--primary); color: white; border: none; }
+        button.btn-primary:hover { background: var(--primary-hover); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); }
+        button.btn-success { background: var(--success); color: white; border: none; }
+        button.btn-success:hover { background: var(--success-hover); box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); }
+        button.btn-back { background: transparent; color: var(--text-muted); border: none; margin-top: 15px; font-size: 0.85rem; }
+        button.btn-back:hover { color: var(--text-main); background: rgba(255,255,255,0.05); }
+
+        /* Inputs */
+        input[type="text"] {
+            background: rgba(0,0,0,0.2); border: 1px solid var(--border); color: white; padding: 14px; border-radius: 8px; width: 100%; box-sizing: border-box;
+            margin: 10px 0 20px 0; text-align: center; font-size: 1.2rem; font-family: 'JetBrains Mono', monospace; letter-spacing: 2px; outline: none; transition: border-color 0.2s;
+        }
+        input[type="text"]:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2); }
+
+        /* Code Display */
+        .code-display {
+            font-size: 2.5rem; color: var(--text-main); margin: 10px 0 24px 0; font-family: 'JetBrains Mono', monospace;
+            letter-spacing: 8px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); padding: 15px; border-radius: 8px;
+        }
+
+        /* Progress & Logs */
+        progress { width: 100%; height: 8px; display: none; margin-top: 15px; border-radius: 10px; border: none; background: var(--border); overflow: hidden; }
+        progress::-webkit-progress-bar { background: var(--border); }
+        progress::-webkit-progress-value { background: var(--primary); border-radius: 10px; transition: width 0.2s ease; }
+        progress::-moz-progress-bar { background: var(--primary); border-radius: 10px; }
+
+        #speed-tag { font-size: 0.8rem; color: var(--primary); margin-top: 10px; font-weight: 500; }
+        #log { font-size: 0.8rem; color: var(--text-muted); margin-top: 30px; text-align: left; max-height: 120px; overflow-y: auto; padding-top: 15px; border-top: 1px solid var(--border); font-family: 'JetBrains Mono', monospace; }
+        #log div { margin-bottom: 6px; }
+        #log b { color: var(--text-main); }
     </style>
 </head>
 <body>
+
     <div class="box">
-        <div id="status" class="status-pill">CONNECTING...</div>
+        <div class="brand"><i class='bx bx-transfer-alt'></i> PeerDrop</div>
+        <div id="status" class="status-pill"><i class='bx bx-loader-alt bx-spin'></i> CONNECTING...</div>
 
         <div id="step-1" class="view active">
-            <h3>Network Path</h3>
-            <button id="net-local">🏠 Local Network</button>
-            <button id="net-internet">🌍 Over Internet</button>
+            <h3>Select Connection</h3>
+            <button id="net-local"><i class='bx bx-wifi'></i> Local Network (Fastest)</button>
+            <button id="net-internet"><i class='bx bx-globe'></i> Global Network (P2P)</button>
         </div>
 
         <div id="step-2" class="view">
-            <h3 id="network-title">Role</h3>
-            <button id="role-send" class="btn-green">📤 Send File</button>
-            <button id="role-receive" class="btn-green">📥 Receive File</button>
-            <button id="back-to-1" class="btn-back">← Back</button>
+            <h3 id="network-title">Select Role</h3>
+            <button id="role-send" class="btn-primary"><i class='bx bx-upload'></i> Send a File</button>
+            <button id="role-receive" class="btn-primary"><i class='bx bx-download'></i> Receive a File</button>
+            <button id="back-to-1" class="btn-back"><i class='bx bx-arrow-back'></i> Back to Network</button>
         </div>
 
         <div id="step-send" class="view">
-            <h3>Sender</h3>
+            <div class="instructions">
+                <div class="step"><i class='bx bx-file'></i><span>1. Pick File</span></div>
+                <div class="step"><i class='bx bx-share-alt'></i><span>2. Share Code</span></div>
+                <div class="step"><i class='bx bx-check-shield'></i><span>3. Stream</span></div>
+            </div>
+
+            <div id="drop-zone" class="drop-zone">
+                <i class='bx bx-cloud-upload'></i>
+                <p>Drag & Drop a file here</p>
+                <span>or click to browse</span>
+            </div>
+            
+            <input type="file" id="file-pick" style="display: none;">
+            
+            <div id="file-name-display"></div>
+
             <div id="send-code-display" class="code-display">------</div>
-            <input type="file" id="file-pick">
-            <button id="start-transfer">🚀 Start Stream</button>
+            
+            <button id="start-transfer" class="btn-success"><i class='bx bx-rocket'></i> Start Transfer</button>
             <progress id="prog-bar" value="0" max="100"></progress>
             <div id="speed-tag"></div>
-            <button class="btn-back cancel-btn">← Cancel</button>
+            <button class="btn-back cancel-btn"><i class='bx bx-x'></i> Cancel Session</button>
         </div>
 
         <div id="step-receive" class="view">
-            <h3>Receiver</h3>
-            <input type="text" id="input-code" placeholder="Enter 6-Digit Code">
-            <button id="join-btn">🤝 Connect</button>
-            <div id="receive-status" style="margin-top:10px; font-size: 13px;">Waiting...</div>
-            <button class="btn-back cancel-btn">← Cancel</button>
+            <div class="instructions">
+                <div class="step"><i class='bx bx-key'></i><span>1. Enter Code</span></div>
+                <div class="step"><i class='bx bx-link'></i><span>2. Connect</span></div>
+                <div class="step"><i class='bx bx-download'></i><span>3. Download</span></div>
+            </div>
+
+            <input type="text" id="input-code" placeholder="000000" maxlength="6" autocomplete="off">
+            <button id="join-btn" class="btn-success"><i class='bx bx-link'></i> Connect to Sender</button>
+            <div id="receive-status" style="margin-top:15px; font-size: 0.85rem; color: var(--text-muted);">Awaiting connection...</div>
+            <button class="btn-back cancel-btn"><i class='bx bx-x'></i> Cancel Session</button>
         </div>
 
         <div id="log"></div>
     </div>
+
     <script src="main.js"></script>
 </body>
 </html>
