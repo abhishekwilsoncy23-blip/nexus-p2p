@@ -31,10 +31,48 @@
             background-image: radial-gradient(circle at top, rgba(59, 130, 246, 0.05), transparent 40%);
         }
 
+        /* Layout Wrapper for App + Ad */
+        .main-wrapper {
+            display: flex;
+            gap: 24px;
+            align-items: flex-start;
+            padding: 20px;
+            width: 100%;
+            max-width: 800px;
+            justify-content: center;
+            box-sizing: border-box;
+        }
+
         .box {
             background: var(--surface); border: 1px solid var(--border); padding: 40px;
             border-radius: 16px; width: 100%; max-width: 460px; text-align: center;
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); box-sizing: border-box;
+            flex-shrink: 0;
+        }
+
+        /* Ad Sidebar Container */
+        .ad-sidebar {
+            width: 300px; /* Standard ad width */
+            min-height: 250px;
+            background: rgba(0,0,0,0.2);
+            border: 1px dashed var(--border);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }
+        .ad-sidebar i { font-size: 1.5rem; margin-bottom: 8px; color: var(--border); }
+
+        /* Mobile Layout Adjustment */
+        @media (max-width: 768px) {
+            .main-wrapper { flex-direction: column; align-items: center; }
+            .ad-sidebar { width: 100%; max-width: 460px; min-height: 100px; }
         }
 
         /* Branding */
@@ -119,62 +157,69 @@
 </head>
 <body>
 
-    <div class="box">
-        <div class="brand"><i class='bx bx-transfer-alt'></i> PeerDrop</div>
-        <div id="status" class="status-pill"><i class='bx bx-loader-alt bx-spin'></i> CONNECTING...</div>
+    <div class="main-wrapper">
+        
+        <div class="box">
+            <div class="brand"><i class='bx bx-transfer-alt'></i> PeerDrop</div>
+            <div id="status" class="status-pill"><i class='bx bx-loader-alt bx-spin'></i> CONNECTING...</div>
 
-        <div id="step-1" class="view active">
-            <h3>Select Connection</h3>
-            <button id="net-local"><i class='bx bx-wifi'></i> Local Network (Fastest)</button>
-            <button id="net-internet"><i class='bx bx-globe'></i> Global Network (P2P)</button>
-        </div>
-
-        <div id="step-2" class="view">
-            <h3 id="network-title">Select Role</h3>
-            <button id="role-send" class="btn-primary"><i class='bx bx-upload'></i> Send a File</button>
-            <button id="role-receive" class="btn-primary"><i class='bx bx-download'></i> Receive a File</button>
-            <button id="back-to-1" class="btn-back"><i class='bx bx-arrow-back'></i> Back to Network</button>
-        </div>
-
-        <div id="step-send" class="view">
-            <div class="instructions">
-                <div class="step"><i class='bx bx-file'></i><span>1. Pick File</span></div>
-                <div class="step"><i class='bx bx-share-alt'></i><span>2. Share Code</span></div>
-                <div class="step"><i class='bx bx-check-shield'></i><span>3. Stream</span></div>
+            <div id="step-1" class="view active">
+                <h3>Select Connection</h3>
+                <button id="net-local"><i class='bx bx-wifi'></i> Local Network (Fastest)</button>
+                <button id="net-internet"><i class='bx bx-globe'></i> Global Network (P2P)</button>
             </div>
 
-            <div id="drop-zone" class="drop-zone">
-                <i class='bx bx-cloud-upload'></i>
-                <p>Drag & Drop a file here</p>
-                <span>or click to browse</span>
-            </div>
-            
-            <input type="file" id="file-pick" style="display: none;">
-            
-            <div id="file-name-display"></div>
-
-            <div id="send-code-display" class="code-display">------</div>
-            
-            <button id="start-transfer" class="btn-success"><i class='bx bx-rocket'></i> Start Transfer</button>
-            <progress id="prog-bar" value="0" max="100"></progress>
-            <div id="speed-tag"></div>
-            <button class="btn-back cancel-btn"><i class='bx bx-x'></i> Cancel Session</button>
-        </div>
-
-        <div id="step-receive" class="view">
-            <div class="instructions">
-                <div class="step"><i class='bx bx-key'></i><span>1. Enter Code</span></div>
-                <div class="step"><i class='bx bx-link'></i><span>2. Connect</span></div>
-                <div class="step"><i class='bx bx-download'></i><span>3. Download</span></div>
+            <div id="step-2" class="view">
+                <h3 id="network-title">Select Role</h3>
+                <button id="role-send" class="btn-primary"><i class='bx bx-upload'></i> Send a File</button>
+                <button id="role-receive" class="btn-primary"><i class='bx bx-download'></i> Receive a File</button>
+                <button id="back-to-1" class="btn-back"><i class='bx bx-arrow-back'></i> Back to Network</button>
             </div>
 
-            <input type="text" id="input-code" placeholder="000000" maxlength="6" autocomplete="off">
-            <button id="join-btn" class="btn-success"><i class='bx bx-link'></i> Connect to Sender</button>
-            <div id="receive-status" style="margin-top:15px; font-size: 0.85rem; color: var(--text-muted);">Awaiting connection...</div>
-            <button class="btn-back cancel-btn"><i class='bx bx-x'></i> Cancel Session</button>
+            <div id="step-send" class="view">
+                <div class="instructions">
+                    <div class="step"><i class='bx bx-file'></i><span>1. Pick File</span></div>
+                    <div class="step"><i class='bx bx-share-alt'></i><span>2. Share Code</span></div>
+                    <div class="step"><i class='bx bx-check-shield'></i><span>3. Stream</span></div>
+                </div>
+
+                <div id="drop-zone" class="drop-zone">
+                    <i class='bx bx-cloud-upload'></i>
+                    <p>Drag & Drop a file here</p>
+                    <span>or click to browse</span>
+                </div>
+                
+                <input type="file" id="file-pick" style="display: none;">
+                <div id="file-name-display"></div>
+                <div id="send-code-display" class="code-display">------</div>
+                
+                <button id="start-transfer" class="btn-success"><i class='bx bx-rocket'></i> Start Transfer</button>
+                <progress id="prog-bar" value="0" max="100"></progress>
+                <div id="speed-tag"></div>
+                <button class="btn-back cancel-btn"><i class='bx bx-x'></i> Cancel Session</button>
+            </div>
+
+            <div id="step-receive" class="view">
+                <div class="instructions">
+                    <div class="step"><i class='bx bx-key'></i><span>1. Enter Code</span></div>
+                    <div class="step"><i class='bx bx-link'></i><span>2. Connect</span></div>
+                    <div class="step"><i class='bx bx-download'></i><span>3. Download</span></div>
+                </div>
+
+                <input type="text" id="input-code" placeholder="000000" maxlength="6" autocomplete="off">
+                <button id="join-btn" class="btn-success"><i class='bx bx-link'></i> Connect to Sender</button>
+                <div id="receive-status" style="margin-top:15px; font-size: 0.85rem; color: var(--text-muted);">Awaiting connection...</div>
+                <button class="btn-back cancel-btn"><i class='bx bx-x'></i> Cancel Session</button>
+            </div>
+
+            <div id="log"></div>
         </div>
 
-        <div id="log"></div>
+        <div class="ad-sidebar">
+            <i class='bx bx-bar-chart-alt-2'></i>
+            <span>Advertisement Space</span>
+            </div>
+
     </div>
 
     <script src="main.js"></script>
