@@ -1,0 +1,16 @@
+{
+  "name": "DineShare",
+  "short_name": "DineShare",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#fff7ed",
+  "theme_color": "#f97316",
+  "description": "Secure P2P Local File Sharing",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2885/2885417.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
