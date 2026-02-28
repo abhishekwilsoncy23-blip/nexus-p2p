@@ -15,17 +15,18 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
     
     <style>
-        :root { --brand: #f97316; --bg: #fff7ed; --card: #ffffff; --text: #431407; --gray: #94a3b8; --success: #22c55e; }
+        :root { --brand: #f97316; --bg: #fff7ed; --card: #ffffff; --text: #431407; --gray: #94a3b8; --success: #22c55e; --error: #ef4444; }
         * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
         body { background: var(--bg); color: var(--text); margin: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 20px; }
         
         .main-container { width: 100%; max-width: 450px; display: flex; flex-direction: column; gap: 15px; }
         .card { background: var(--card); border-radius: 24px; padding: 30px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); border: 1px solid #ffedd5; }
         
-        .ds-sys-footer-info { width: 100%; min-height: 250px; background: #fff; border-radius: 16px; display: flex; align-items: center; justify-content: center; border: 1px solid #ffedd5; overflow: hidden; }
+        /* Silent Ad Slot */
+        .ds-sys-footer-info { width: 100%; min-height: 250px; background: #fff; border-radius: 16px; display: flex; align-items: center; justify-content: center; border: 1px solid #ffedd5; overflow: hidden; margin-top: 10px; }
 
         h1 { color: var(--brand); text-align: center; margin: 0; font-size: 34px; letter-spacing: -1.5px; }
-        .tagline { text-align: center; font-size: 13px; color: #9a3412; margin-bottom: 20px; opacity: 0.7; }
+        .tagline { text-align: center; font-size: 13px; color: #9a3412; margin-bottom: 20px; opacity: 0.7; font-weight: bold; }
         
         .tabs { display: flex; background: #ffedd5; padding: 5px; border-radius: 14px; margin-bottom: 20px; }
         .tab-btn { flex: 1; border: none; padding: 12px; border-radius: 10px; cursor: pointer; font-weight: bold; background: transparent; color: #c2410c; }
@@ -45,9 +46,9 @@
         .progress-cont { height: 12px; background: #ffedd5; border-radius: 6px; overflow: hidden; margin: 15px 0; display: none; }
         .progress-bar { width: 0%; height: 100%; background: var(--brand); transition: width 0.1s; }
         .status-text { text-align: center; font-size: 13px; font-weight: 700; color: #9a3412; padding: 10px; border-radius: 8px; background: #fff7ed; }
-
-        /* PWA Install Toast */
-        #pwa-toast { position: fixed; bottom: 20px; background: #431407; color: white; padding: 12px 20px; border-radius: 50px; display: none; align-items: center; gap: 10px; font-size: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); cursor: pointer; z-index: 1000; }
+        
+        /* Firewall Note */
+        .firewall-note { font-size: 11px; color: #9a3412; text-align: center; margin-top: 15px; background: #ffedd5; padding: 10px; border-radius: 8px; display: none; }
     </style>
 </head>
 <body>
@@ -55,7 +56,7 @@
 <div class="main-container">
     <div class="card">
         <h1>DineShare</h1>
-        <div class="tagline">Secure P2P File Sharing</div>
+        <div class="tagline">Both devices must be on the SAME network</div>
 
         <div class="tabs">
             <button class="tab-btn active" id="btn-send-tab" onclick="setMode('send')">Send</button>
@@ -82,6 +83,10 @@
         <div id="transferInfo" style="margin-top:20px;">
             <div class="status-text" id="currentStatus">Ready</div>
             <div class="progress-cont" id="pCont"><div class="progress-bar" id="pBar"></div></div>
+            
+            <div id="firewallNote" class="firewall-note">
+                <b>Connection Slow?</b> Check if a Firewall or Antivirus is blocking P2P, or ensure you are not on a public Guest WiFi that restricts device-to-device communication.
+            </div>
         </div>
     </div>
 
@@ -91,10 +96,6 @@
         </script>
         <script type="text/javascript" src="//www.highperformanceformat.com/YOUR_ID/invoke.js"></script>
     </div>
-</div>
-
-<div id="pwa-toast" onclick="installPWA()">
-    <span>📲 Add DineShare to Home Screen</span>
 </div>
 
 <script>
@@ -123,27 +124,10 @@ const firebaseConfig = {
     const db = firebase.database();
     const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-    let pc, dc, files = [], expirationTimer, deferredPrompt;
+    let pc, dc, files = [], expirationTimer, firewallTimer;
 
-    // --- PWA REGISTRATION & INSTALL LOGIC ---
-    if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('sw.js');
-    }
-
-    window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        deferredPrompt = e;
-        document.getElementById('pwa-toast').style.display = 'flex';
-    });
-
-    async function installPWA() {
-        if (deferredPrompt) {
-            deferredPrompt.prompt();
-            const { outcome } = await deferredPrompt.userChoice;
-            if (outcome === 'accepted') document.getElementById('pwa-toast').style.display = 'none';
-            deferredPrompt = null;
-        }
-    }
+    // --- PWA REGISTRATION ---
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 
     // --- UI LOGIC ---
     function setMode(mode) {
@@ -156,7 +140,7 @@ const firebaseConfig = {
     function filesReady() {
         files = Array.from(document.getElementById('filePicker').files);
         if(files.length > 0) {
-            document.getElementById('fileStatus').innerHTML = `<b>${files.length} Files Ready</b>`;
+            document.getElementById('fileStatus').innerHTML = `<b>${files.length} Files Selected</b>`;
             document.getElementById('genBtn').disabled = false;
         }
     }
@@ -180,7 +164,9 @@ const firebaseConfig = {
             if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
                 db.goOffline();
                 clearInterval(expirationTimer);
+                clearTimeout(firewallTimer);
                 document.getElementById('timer').innerText = "DIRECT P2P ENCRYPTED";
+                document.getElementById('firewallNote').style.display = 'none';
             }
         };
 
@@ -201,6 +187,13 @@ const firebaseConfig = {
                 document.getElementById('currentStatus').innerText = "Expired. Refresh to start over.";
             }
         }, 1000);
+
+        // --- FIREWALL NOTE ---
+        firewallTimer = setTimeout(() => {
+            if (pc.iceConnectionState !== "connected") {
+                document.getElementById('firewallNote').style.display = 'block';
+            }
+        }, 15000); // Show note after 15 seconds
 
         roomRef.child('answer').on('value', snap => {
             if(snap.val() && !pc.currentRemoteDescription) pc.setRemoteDescription(new RTCSessionDescription(snap.val()));
@@ -270,7 +263,7 @@ const firebaseConfig = {
         roomRef.child('answer').set({ sdp: answer.sdp, type: answer.type });
 
         pc.onicecandidate = e => e.candidate && roomRef.child('rCand').push(e.candidate.toJSON());
-        roomRef.child('sCand').on('child_added', snap => pc.addIceCandidate(new RTCIceCandidate(snap.val())));
+        roomRef.child('rCand').on('child_added', snap => pc.addIceCandidate(new RTCIceCandidate(snap.val())));
     }
 </script>
 </body>
