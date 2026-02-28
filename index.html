@@ -74,7 +74,7 @@
             <div style="text-align: left; font-size: 14px; font-weight: 600; color: #475569; margin-top: 10px;">Enter 6-Character Code:</div>
             <input type="text" id="joinCode" placeholder="e.g. A7K9X2" maxlength="6" style="text-transform: uppercase;">
             
-            <button class="action-btn" onclick="startReceiving()">Connect & Choose Save Location</button>
+            <button class="action-btn" onclick="startReceiving()">Connect & Download</button>
             
             <div id="receiveStatus" class="status">Waiting for code...</div>
             <div class="progress-cont" id="receiveProgressCont"><div class="progress-bar" id="receiveProgressBar"></div></div>
@@ -87,7 +87,6 @@
     </div>
     <script>
         // 1. FIREBASE CONFIGURATION (REPLACE WITH YOURS)
-
 const firebaseConfig = {
 
   apiKey: "AIzaSyA-NhlaD3XRLKEf_y6xCMOElXnx5IVWhIg",
@@ -108,6 +107,7 @@ const firebaseConfig = {
 
 };
 
+
         
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
@@ -115,7 +115,6 @@ const firebaseConfig = {
         // 2. GLOBALS
         let pc, dataChannel;
         let selectedFiles = [];
-        let rootDirectoryHandle = null; 
         const CHUNK_SIZE = 16384; 
 
         // 3. UI & UTILS
@@ -134,15 +133,13 @@ const firebaseConfig = {
             }
         }
 
-        // Hides network complexity from user. 
-        // If local, give WebRTC no external servers. If internet, give it Google's server.
         function getWebRTCConfig() {
             const mode = document.getElementById('networkMode').value;
             return mode === 'local' ? { iceServers: [] } : { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
         }
 
         function generateCode() {
-            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No I, O, 1, 0 for easy reading
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
             let result = '';
             for (let i = 0; i < 6; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
             return result;
@@ -191,7 +188,7 @@ const firebaseConfig = {
             const counterLabel = document.getElementById('sendFileCounter');
             counterLabel.style.display = 'block';
             
-            dataChannel.bufferedAmountLowThreshold = 1024 * 1024; // 1MB buffer to prevent crashing
+            dataChannel.bufferedAmountLowThreshold = 1024 * 1024; 
 
             for (let i = 0; i < selectedFiles.length; i++) {
                 const file = selectedFiles[i];
@@ -199,10 +196,10 @@ const firebaseConfig = {
                 counterLabel.innerText = `Sending file ${i + 1} of ${selectedFiles.length}`;
                 document.getElementById('sendStatus').innerText = `Sending: ${file.name}`;
 
-                // Tell receiver what file is coming
                 dataChannel.send(JSON.stringify({ 
                     type: 'header', 
                     fileName: file.name, 
+                    fileType: file.type,
                     fileSize: file.size,
                     isLastFile: i === selectedFiles.length - 1
                 }));
@@ -217,7 +214,6 @@ const firebaseConfig = {
                 while (offset < file.size) {
                     const chunk = await readSlice(offset);
                     
-                    // Wait if buffer gets too full
                     if (dataChannel.bufferedAmount > dataChannel.bufferedAmountLowThreshold) {
                         await new Promise(resolve => {
                             dataChannel.onbufferedamountlow = () => {
@@ -235,7 +231,6 @@ const firebaseConfig = {
                     }
                 }
                 
-                // Tell receiver this file is done
                 dataChannel.send(JSON.stringify({ type: 'eof' }));
             }
             
@@ -245,20 +240,10 @@ const firebaseConfig = {
 
         // 5. RECEIVER LOGIC
         async function startReceiving() {
-            if (!window.showDirectoryPicker) {
-                return alert("Your browser doesn't support silent saving. Please use Chrome, Edge, or Brave on Desktop.");
-            }
-
             const code = document.getElementById('joinCode').value.toUpperCase();
             if (code.length !== 6) return alert("Enter a valid 6-character code");
 
-            try {
-                // Ask user ONE TIME where to save everything
-                rootDirectoryHandle = await window.showDirectoryPicker();
-            } catch (err) {
-                return alert("You must select a folder to save the incoming files.");
-            }
-
+            // No more directory picker asking where to save
             document.getElementById('receiveStatus').innerText = "Connecting...";
 
             pc = new RTCPeerConnection(getWebRTCConfig());
@@ -287,9 +272,11 @@ const firebaseConfig = {
         }
 
         async function setupReceiveChannel(channel) {
-            let activeWriter = null;
             let currentFileSize = 0;
             let receivedBytes = 0;
+            let fileChunks = [];
+            let currentFileName = "";
+            let currentFileType = "";
 
             document.getElementById('receiveProgressCont').style.display = 'block';
             document.getElementById('receiveFileCounter').style.display = 'block';
@@ -301,29 +288,41 @@ const firebaseConfig = {
                     if (msg.type === 'header') {
                         document.getElementById('receiveStatus').innerText = `Receiving: ${msg.fileName}`;
                         currentFileSize = msg.fileSize;
+                        currentFileName = msg.fileName;
+                        currentFileType = msg.fileType || 'application/octet-stream';
                         receivedBytes = 0;
-
-                        // Create the file in the folder the user selected earlier
-                        const fileHandle = await rootDirectoryHandle.getFileHandle(msg.fileName, { create: true });
-                        activeWriter = await fileHandle.createWritable();
+                        fileChunks = []; // Reset chunks for the new file
                     } 
                     else if (msg.type === 'eof') {
-                        // File finished writing
-                        await activeWriter.close();
-                        activeWriter = null;
+                        // File finished, trigger automatic download
+                        const blob = new Blob(fileChunks, { type: currentFileType });
+                        const url = URL.createObjectURL(blob);
+                        
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = currentFileName;
+                        document.body.appendChild(a);
+                        a.click();
+                        
+                        // Clean up memory
+                        setTimeout(() => {
+                            document.body.removeChild(a);
+                            URL.revokeObjectURL(url);
+                        }, 1000);
+                        
+                        fileChunks = []; // Clear RAM
+
                         if (msg.isLastFile) {
                             document.getElementById('receiveStatus').innerText = "✅ All Files Received Successfully!";
                         }
                     }
                 } else {
-                    // Save actual file data
-                    if (activeWriter) {
-                        receivedBytes += e.data.byteLength;
-                        await activeWriter.write(e.data);
-                        
-                        if (receivedBytes % (CHUNK_SIZE * 50) === 0 || receivedBytes >= currentFileSize) {
-                            document.getElementById('receiveProgressBar').style.width = (receivedBytes / currentFileSize * 100) + '%';
-                        }
+                    // Save chunk to memory array
+                    fileChunks.push(e.data);
+                    receivedBytes += e.data.byteLength;
+                    
+                    if (receivedBytes % (CHUNK_SIZE * 50) === 0 || receivedBytes >= currentFileSize) {
+                        document.getElementById('receiveProgressBar').style.width = (receivedBytes / currentFileSize * 100) + '%';
                     }
                 }
             };
@@ -342,7 +341,6 @@ const firebaseConfig = {
         }
 
         function cleanup(code) {
-            // Delete room to keep database clean
             setTimeout(() => { db.ref('rooms/' + code).remove(); }, 5000);
         }
     </script>
