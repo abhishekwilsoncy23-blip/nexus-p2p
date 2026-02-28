@@ -3,43 +3,109 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:,">
     <title>DineShare | Local P2P</title>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+    
     <style>
-        :root { --primary: #10b981; --bg: #f0fdf4; }
-        body { font-family: sans-serif; background: var(--bg); display: flex; justify-content: center; padding: 20px; }
-        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); width: 100%; max-width: 400px; text-align: center; }
-        input, button { width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px; border: 1px solid #ddd; box-sizing: border-box; }
-        button { background: var(--primary); color: white; border: none; font-weight: bold; cursor: pointer; }
-        .progress-cont { height: 10px; background: #eee; border-radius: 5px; overflow: hidden; display: none; margin: 10px 0; }
+        :root { --primary: #10b981; --bg: #f8fafc; --card: #ffffff; --warn: #fef3c7; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); margin: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; color: #1e293b; }
+        
+        .container { width: 90%; max-width: 450px; background: var(--card); margin-top: 30px; padding: 25px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); }
+        h1 { color: var(--primary); margin: 0 0 5px 0; text-align: center; }
+        .subtitle { font-size: 13px; color: #64748b; text-align: center; margin-bottom: 20px; }
+
+        /* Tabs */
+        .tabs { display: flex; gap: 8px; margin-bottom: 20px; background: #f1f5f9; padding: 5px; border-radius: 12px; }
+        .tab-btn { flex: 1; padding: 10px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: transparent; transition: 0.2s; color: #64748b; }
+        .tab-btn.active { background: white; color: var(--primary); box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+
+        .panel { display: none; }
+        .panel.active { display: block; }
+
+        /* UI Elements */
+        .upload-area { border: 2px dashed #cbd5e1; border-radius: 12px; padding: 30px; text-align: center; cursor: pointer; margin-bottom: 15px; transition: 0.2s; }
+        .upload-area:hover { border-color: var(--primary); background: #f0fdf4; }
+        
+        input[type="text"] { width: 100%; padding: 15px; margin: 10px 0; border: 2px solid #e2e8f0; border-radius: 10px; font-size: 18px; text-align: center; font-weight: bold; letter-spacing: 2px; }
+        .btn-main { width: 100%; padding: 15px; border: none; border-radius: 10px; background: var(--primary); color: white; font-size: 16px; font-weight: bold; cursor: pointer; }
+        .btn-main:disabled { background: #94a3b8; cursor: not-allowed; }
+
+        /* Progress & Status */
+        .status-box { margin-top: 20px; padding: 15px; border-radius: 10px; background: #f8fafc; font-size: 14px; text-align: center; font-weight: 500; }
+        .progress-cont { width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; margin-top: 10px; overflow: hidden; display: none; }
         .progress-bar { width: 0%; height: 100%; background: var(--primary); transition: width 0.1s; }
-        .status { font-size: 14px; color: #666; margin-top: 10px; }
+
+        /* Sticky Firewall Note */
+        .sticky-note { width: 90%; max-width: 450px; background: var(--warn); border-left: 5px solid #fbbf24; padding: 15px; margin-top: 20px; border-radius: 8px; font-size: 13px; color: #92400e; box-sizing: border-box; position: relative; }
+        .help-link { font-weight: bold; text-decoration: underline; cursor: pointer; margin-left: 5px; }
+
+        /* Modal / Popup */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 100; padding: 20px; }
+        .modal { background: white; padding: 25px; border-radius: 16px; max-width: 400px; width: 100%; position: relative; }
+        .modal h3 { margin-top: 0; color: #1e293b; }
+        .modal-close { position: absolute; top: 15px; right: 15px; cursor: pointer; font-size: 20px; color: #64748b; }
+        .modal ul { padding-left: 20px; font-size: 14px; color: #475569; line-height: 1.6; }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <h2 style="color:var(--primary)">DineShare Local</h2>
-    <p style="font-size:12px; color:#666;">Devices must be on the same Wi-Fi</p>
-    
-    <div id="setupView">
-        <input type="file" id="fileInput" multiple onchange="document.getElementById('sendBtn').disabled = false">
-        <button id="sendBtn" onclick="startSender()" disabled>Generate Code</button>
-        <div id="displayCode" style="font-size:32px; font-weight:bold; margin: 15px 0;"></div>
-        <hr>
-        <input type="text" id="inputCode" placeholder="Enter 6-digit code" maxlength="6">
-        <button onclick="startReceiver()">Receive Files</button>
+    <div class="container">
+        <h1>DineShare</h1>
+        <div class="subtitle">Local P2P File Transfer <span style="font-weight:bold; color:var(--primary)">v1.6</span></div>
+
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('sender')">Sender</button>
+            <button class="tab-btn" onclick="switchTab('receiver')">Receiver</button>
+        </div>
+
+        <div id="senderPanel" class="panel active">
+            <label class="upload-area" id="dropZone">
+                <input type="file" id="fileInput" multiple hidden onchange="updateFileCount()">
+                <span id="fileLabel">📁 Click to select or drop files</span>
+            </label>
+            <button class="btn-main" id="genBtn" onclick="initSender()" disabled>Generate Transfer Code</button>
+            
+            <div id="codeDisplay" style="font-size: 42px; font-weight: 800; text-align: center; margin-top: 20px; letter-spacing: 5px; color: var(--primary);"></div>
+            
+            <div id="senderStatus" class="status-box">Ready to send</div>
+            <div class="progress-cont" id="sProgCont"><div class="progress-bar" id="sProgBar"></div></div>
+        </div>
+
+        <div id="receiverPanel" class="panel">
+            <p style="font-size:14px; color:#64748b; margin-bottom:5px;">Enter the 6-character code:</p>
+            <input type="text" id="joinCode" placeholder="ABC123" maxlength="6" style="text-transform: uppercase;">
+            <button class="btn-main" onclick="initReceiver()">Connect & Receive</button>
+
+            <div id="receiverStatus" class="status-box">Waiting for code...</div>
+            <div class="progress-cont" id="rProgCont"><div class="progress-bar" id="rProgBar"></div></div>
+        </div>
     </div>
 
-    <div id="transferView">
-        <div id="statusText" class="status">Ready</div>
-        <div class="progress-cont" id="pCont"><div class="progress-bar" id="pBar"></div></div>
+    <div class="sticky-note">
+        ⚠️ <b>Note:</b> Local firewalls may interfere with the connection. 
+        <span class="help-link" onclick="toggleModal(true)">Click here for steps to fix.</span>
     </div>
-</div>
 
-<script>
-    // --- CONFIGURATION ---
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal">
+            <span class="modal-close" onclick="toggleModal(false)">&times;</span>
+            <h3>Connection Help</h3>
+            <p style="font-size: 14px; color: #475569;">If the transfer doesn't start, try these steps:</p>
+            <ul>
+                <li><b>Use a Mobile Hotspot:</b> This is the most reliable way. Connect the PC to the phone's hotspot.</li>
+                <li><b>Check Wi-Fi Type:</b> Ensure the network is set to "Private" or "Home" in your PC settings.</li>
+                <li><b>Disable VPN:</b> VPNs often block local P2P traffic.</li>
+                <li><b>Disable Browser Extensions:</b> Ad-blockers sometimes interfere with WebRTC.</li>
+                <li><b>Same Network:</b> Ensure both devices are on the exact same Wi-Fi SSID.</li>
+            </ul>
+            <button class="btn-main" onclick="toggleModal(false)" style="margin-top:10px;">Got it!</button>
+        </div>
+    </div>
+
+    <script>
+        // 1. CONFIGURATION
 const firebaseConfig = {
 
   apiKey: "AIzaSyA-NhlaD3XRLKEf_y6xCMOElXnx5IVWhIg",
@@ -61,94 +127,119 @@ const firebaseConfig = {
 };
 
 
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const iceConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-    
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
-    const iceConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-    
-    let pc, dc, files = [];
+        let pc, dc, selectedFiles = [];
 
-    // --- SENDER ---
-    async function startSender() {
-        files = Array.from(document.getElementById('fileInput').files);
-        const code = Math.random().toString(36).substring(2, 8).toUpperCase();
-        document.getElementById('displayCode').innerText = code;
-        document.getElementById('statusText').innerText = "Waiting for receiver...";
-
-        pc = new RTCPeerConnection(iceConfig);
-        dc = pc.createDataChannel("transfer");
-        dc.onopen = () => sendAllFiles();
-
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        
-        const roomRef = db.ref('local_rooms/' + code);
-        roomRef.set({ offer: { sdp: offer.sdp, type: offer.type } });
-        roomRef.child('answer').on('value', snap => snap.val() && pc.setRemoteDescription(new RTCSessionDescription(snap.val())));
-        pc.onicecandidate = e => e.candidate && roomRef.child('sCand').push(e.candidate.toJSON());
-        roomRef.child('rCand').on('child_added', snap => pc.addIceCandidate(new RTCIceCandidate(snap.val())));
-    }
-
-    async function sendAllFiles() {
-        document.getElementById('pCont').style.display = 'block';
-        for (let file of files) {
-            document.getElementById('statusText').innerText = `Sending: ${file.name}`;
-            dc.send(JSON.stringify({ name: file.name, size: file.size, type: file.type }));
-            
-            let offset = 0;
-            const chunk = 16384;
-            while (offset < file.size) {
-                if (dc.bufferedAmount > 1000000) await new Promise(r => setTimeout(r, 50));
-                const data = await file.slice(offset, offset + chunk).arrayBuffer();
-                dc.send(data);
-                offset += data.byteLength;
-                document.getElementById('pBar').style.width = (offset / file.size * 100) + '%';
-            }
-            dc.send("EOF");
+        // 2. UI UTILS
+        function switchTab(type) {
+            document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(type + 'Panel').classList.add('active');
+            event.target.classList.add('active');
         }
-        document.getElementById('statusText').innerText = "Done!";
-    }
 
-    // --- RECEIVER ---
-    async function startReceiver() {
-        const code = document.getElementById('inputCode').value.toUpperCase();
-        const roomRef = db.ref('local_rooms/' + code);
-        const snap = await roomRef.child('offer').once('value');
-        if (!snap.exists()) return alert("Code not found");
+        function toggleModal(show) {
+            document.getElementById('modalOverlay').style.display = show ? 'flex' : 'none';
+        }
 
-        pc = new RTCPeerConnection(iceConfig);
-        pc.ondatachannel = e => setupDC(e.channel);
-        
-        await pc.setRemoteDescription(new RTCSessionDescription(snap.val()));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        roomRef.child('answer').set({ sdp: answer.sdp, type: answer.type });
+        function updateFileCount() {
+            selectedFiles = Array.from(document.getElementById('fileInput').files);
+            document.getElementById('fileLabel').innerText = `✅ ${selectedFiles.length} files selected`;
+            document.getElementById('genBtn').disabled = false;
+        }
 
-        pc.onicecandidate = e => e.candidate && roomRef.child('rCand').push(e.candidate.toJSON());
-        roomRef.child('sCand').on('child_added', snap => pc.addIceCandidate(new RTCIceCandidate(snap.val())));
-    }
+        // 3. SENDER LOGIC
+        async function initSender() {
+            const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+            document.getElementById('codeDisplay').innerText = code;
+            document.getElementById('senderStatus').innerText = "Waiting for Receiver to connect...";
+            document.getElementById('genBtn').disabled = true;
 
-    function setupDC(channel) {
-        let meta, chunks = [], received = 0;
-        document.getElementById('pCont').style.display = 'block';
-        channel.onmessage = e => {
-            if (typeof e.data === 'string') {
-                if (e.data === "EOF") {
-                    const blob = new Blob(chunks, { type: meta.type });
-                    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = meta.name; a.click();
-                    chunks = []; received = 0;
-                } else {
-                    meta = JSON.parse(e.data);
-                    document.getElementById('statusText').innerText = `Receiving: ${meta.name}`;
+            pc = new RTCPeerConnection(iceConfig);
+            dc = pc.createDataChannel("transfer");
+            dc.onopen = () => startFileTransfer();
+
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+
+            const roomRef = db.ref('p2p_rooms/' + code);
+            roomRef.set({ offer: { sdp: offer.sdp, type: offer.type } });
+
+            roomRef.child('answer').on('value', snap => {
+                if(snap.val() && !pc.currentRemoteDescription) pc.setRemoteDescription(new RTCSessionDescription(snap.val()));
+            });
+
+            pc.onicecandidate = e => e.candidate && roomRef.child('sCand').push(e.candidate.toJSON());
+            roomRef.child('rCand').on('child_added', snap => pc.addIceCandidate(new RTCIceCandidate(snap.val())));
+        }
+
+        async function startFileTransfer() {
+            document.getElementById('sProgCont').style.display = 'block';
+            for (let file of selectedFiles) {
+                document.getElementById('senderStatus').innerText = `Sending: ${file.name}`;
+                dc.send(JSON.stringify({ name: file.name, size: file.size, type: file.type }));
+
+                let offset = 0;
+                const CHUNK = 16384;
+                while (offset < file.size) {
+                    if (dc.bufferedAmount > 1000000) await new Promise(r => setTimeout(r, 60));
+                    const chunkData = await file.slice(offset, offset + CHUNK).arrayBuffer();
+                    dc.send(chunkData);
+                    offset += chunkData.byteLength;
+                    document.getElementById('sProgBar').style.width = (offset / file.size * 100) + '%';
                 }
-            } else {
-                chunks.push(e.data);
-                received += e.data.byteLength;
-                document.getElementById('pBar').style.width = (received / meta.size * 100) + '%';
+                dc.send("FILE_DONE");
             }
-        };
-    }
-</script>
+            document.getElementById('senderStatus').innerText = "✨ All files sent successfully!";
+        }
+
+        // 4. RECEIVER LOGIC
+        async function initReceiver() {
+            const code = document.getElementById('joinCode').value.toUpperCase();
+            if(!code) return alert("Enter a code first!");
+            
+            document.getElementById('receiverStatus').innerText = "Connecting to sender...";
+            const roomRef = db.ref('p2p_rooms/' + code);
+            const snap = await roomRef.child('offer').once('value');
+            if(!snap.exists()) return alert("Invalid or Expired Code");
+
+            pc = new RTCPeerConnection(iceConfig);
+            pc.ondatachannel = e => handleIncomingData(e.channel);
+
+            await pc.setRemoteDescription(new RTCSessionDescription(snap.val()));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            roomRef.child('answer').set({ sdp: answer.sdp, type: answer.type });
+
+            pc.onicecandidate = e => e.candidate && roomRef.child('rCand').push(e.candidate.toJSON());
+            roomRef.child('sCand').on('child_added', snap => pc.addIceCandidate(new RTCIceCandidate(snap.val())));
+        }
+
+        function handleIncomingData(channel) {
+            let meta, chunks = [], received = 0;
+            document.getElementById('rProgCont').style.display = 'block';
+
+            channel.onmessage = e => {
+                if (typeof e.data === 'string') {
+                    if (e.data === "FILE_DONE") {
+                        const blob = new Blob(chunks, { type: meta.type });
+                        const a = document.createElement('a'); 
+                        a.href = URL.createObjectURL(blob); a.download = meta.name; a.click();
+                        chunks = []; received = 0;
+                    } else {
+                        meta = JSON.parse(e.data);
+                        document.getElementById('receiverStatus').innerText = `Downloading: ${meta.name}`;
+                    }
+                } else {
+                    chunks.push(e.data);
+                    received += e.data.byteLength;
+                    document.getElementById('rProgBar').style.width = (received / meta.size * 100) + '%';
+                }
+            };
+        }
+    </script>
 </body>
 </html>
