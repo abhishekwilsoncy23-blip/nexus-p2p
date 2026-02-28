@@ -1,390 +1,208 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Dineshare | Secure P2P File Transfer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DineShare | P2P File Transfer</title>
+    <script src="https://cdn.jsdelivr.net/npm/streamsaver@2.0.5/StreamSaver.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+    
     <style>
-        :root {
-            --primary: #4f46e5;
-            --primary-hover: #4338ca;
-            --bg-color: #f8fafc;
-            --card-bg: #ffffff;
-            --text-main: #0f172a;
-            --text-muted: #64748b;
-            --success: #10b981;
-            --danger: #ef4444;
-            --border: #e2e8f0;
-            --radius: 16px;
-        }
-
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            background: linear-gradient(135deg, #f0f4f8 0%, #d9e2ec 100%);
-            color: var(--text-main);
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
-            min-height: 100vh; margin: 0; padding: 20px; box-sizing: border-box;
-        }
-
-        .brand-header { text-align: center; margin-bottom: 24px; }
-        .brand-header h1 { margin: 0; font-size: 28px; font-weight: 800; color: var(--primary); }
-        .brand-header p { margin: 4px 0 0 0; font-size: 14px; color: var(--text-muted); }
-
-        .card {
-            background: var(--card-bg); padding: 40px; border-radius: var(--radius);
-            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
-            width: 100%; max-width: 440px; text-align: center; box-sizing: border-box;
-        }
-
-        .hidden { display: none !important; }
-        h2 { margin-top: 0; font-size: 22px; margin-bottom: 8px; }
-        .subtitle { color: var(--text-muted); font-size: 14px; margin-bottom: 24px; line-height: 1.5; }
-
-        button {
-            background-color: var(--primary); color: white; border: none; padding: 14px 20px;
-            border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer;
-            width: 100%; margin: 8px 0; transition: 0.2s; touch-action: manipulation;
-        }
-
-        button:hover:not(:disabled) { background-color: var(--primary-hover); }
-        button:disabled { background-color: #cbd5e1; cursor: not-allowed; }
-
-        .btn-secondary { background-color: transparent; color: var(--primary); border: 2px solid var(--primary); }
-        .btn-secondary:hover:not(:disabled) { background-color: #e0e7ff; color: var(--primary-hover); }
-
-        input[type="text"], input[type="file"] {
-            width: 100%; padding: 14px; margin: 10px 0 20px 0;
-            border: 2px solid var(--border); border-radius: 8px; box-sizing: border-box; font-size: 16px;
-        }
-
-        input[type="text"]:focus { outline: none; border-color: var(--primary); }
-        input[type="file"] { padding: 10px; cursor: pointer; background: white; }
-
-        .room-code {
-            font-size: 42px; font-weight: 800; letter-spacing: 8px; color: var(--primary);
-            margin: 20px 0; background: #e0e7ff; padding: 15px; border-radius: 8px;
-        }
-
-        .status { margin-top: 15px; font-size: 14px; font-weight: 500; color: var(--text-muted); }
-
-        .progress-container {
-            width: 100%; background-color: var(--border); border-radius: 6px;
-            margin-top: 20px; overflow: hidden; height: 12px;
-        }
-
-        .progress-bar { height: 100%; background-color: var(--success); width: 0%; transition: width 0.1s linear; }
-
-        .back-btn { background: transparent; color: var(--text-muted); padding: 0; margin-top: 24px; font-size: 14px; }
-        .back-btn:hover { background: transparent; color: var(--text-main); text-decoration: underline; }
+        :root { --primary: #6366f1; --bg: #f8fafc; --card: #ffffff; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); margin: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; color: #1e293b; }
+        .container { width: 90%; max-width: 500px; background: var(--card); margin-top: 50px; padding: 30px; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); text-align: center; }
+        h1 { margin-top: 0; color: var(--primary); font-size: 24px; }
+        .tab-buttons { display: flex; gap: 10px; margin-bottom: 20px; }
+        .tab-btn { flex: 1; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: #e2e8f0; transition: 0.3s; }
+        .tab-btn.active { background: var(--primary); color: white; }
+        .panel { display: none; }
+        .panel.active { display: block; }
+        input[type="file"], input[type="text"] { width: 100%; padding: 12px; margin: 15px 0; border: 2px border #e2e8f0; border-radius: 8px; box-sizing: border-box; }
+        button.action-btn { width: 100%; padding: 15px; border: none; border-radius: 8px; background: var(--primary); color: white; font-size: 16px; font-weight: bold; cursor: pointer; }
+        .status { margin-top: 15px; font-size: 14px; color: #64748b; min-height: 20px; }
+        .progress-cont { width: 100%; height: 10px; background: #e2e8f0; border-radius: 5px; margin-top: 20px; overflow: hidden; display: none; }
+        .progress-bar { width: 0%; height: 100%; background: var(--primary); transition: width 0.1s; }
         
-        #downloadList { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
-
-        .disclaimer {
-            margin-top: 30px; font-size: 11px; color: #94a3b8; text-align: center; max-width: 400px; line-height: 1.5;
-        }
+        /* AD SPACE - Optimized for Native Banners */
+        .ad-slot { margin-top: 30px; width: 100%; max-width: 500px; min-height: 100px; background: #f1f5f9; border-radius: 8px; display: flex; align-items: center; justify-content: center; border: 1px dashed #cbd5e1; }
     </style>
 </head>
-
 <body>
 
-    <div class="brand-header">
-        <h1>Dineshare</h1>
-        <p>Direct. Secure. Fast.</p>
-    </div>
-
-    <div class="card" id="homeScreen">
-        <h2>Transfer Files</h2>
-        <p class="subtitle">Send files directly between devices without storing them on a server.</p>
-        <button onclick="showScreen('senderScreen')">📤 Send Files</button>
-        <button class="btn-secondary" onclick="showScreen('receiverScreen')">📥 Receive Files</button>
-    </div>
-
-    <div class="card hidden" id="senderScreen">
-        <h2>Send a File</h2>
-        <p class="subtitle" id="senderSubtitle">Select a file to generate a secure sharing code.</p>
-        <input type="file" id="fileInput" accept="*/*">
-        <button id="generateBtn">Generate Secure Code</button>
-
-        <div id="senderRoomInfo" class="hidden">
-            <p class="status" id="shareInstruction" style="color: var(--text-main); font-weight: 600;">Share this code with the receiver:</p>
-            <div class="room-code" id="displayRoomCode">------</div>
-            <div class="status" id="senderStatus">⏳ Waiting for receiver to connect...</div>
-            <div class="status" id="expirationWarning" style="color: var(--danger); font-size: 12px; margin-top: 5px;">Code expires in 10 minutes.</div>
-            
-            <input type="file" id="nextFileInput" class="hidden" accept="*/*">
-            <button id="sendAnotherBtn" class="hidden btn-secondary" onclick="document.getElementById('nextFileInput').click()">➕ Send Another File</button>
+    <div class="container">
+        <h1>DineShare</h1>
+        <div class="tab-buttons">
+            <button class="tab-btn active" onclick="switchTab('send')">Send</button>
+            <button class="tab-btn" onclick="switchTab('receive')">Receive</button>
         </div>
 
-        <div class="progress-container hidden" id="senderProgressCont">
-            <div class="progress-bar" id="senderProgressBar"></div>
+        <div id="sendPanel" class="panel active">
+            <input type="file" id="fileInput">
+            <button class="action-btn" onclick="startSending()">Generate 6-Digit Code</button>
+            <div id="sendCodeDisplay" style="font-size: 32px; font-weight: bold; margin-top: 20px; letter-spacing: 5px; color: var(--primary);"></div>
+            <div id="sendStatus" class="status">Select a file to begin</div>
+            <div class="progress-cont" id="sendProgressCont"><div class="progress-bar" id="sendProgressBar"></div></div>
         </div>
-        <button class="back-btn" onclick="resetApp()">← Disconnect & Go Back</button>
-    </div>
 
-    <div class="card hidden" id="receiverScreen">
-        <h2>Receive Files</h2>
-        <p class="subtitle">Enter the 6-digit code provided by the sender.</p>
-        <input type="text" id="roomInput" placeholder="Enter 6-digit code" maxlength="6" autocomplete="off" inputmode="numeric">
-        <button id="joinBtn">Connect & Receive</button>
-
-        <div class="status" id="receiverStatus">Waiting for code...</div>
-
-        <div class="progress-container hidden" id="receiverProgressCont">
-            <div class="progress-bar" id="receiverProgressBar"></div>
+        <div id="receivePanel" class="panel">
+            <input type="text" id="joinCode" placeholder="Enter 6-digit code" maxlength="6">
+            <button class="action-btn" onclick="startReceiving()">Connect & Download</button>
+            <div id="receiveStatus" class="status">Enter code from sender</div>
+            <div class="progress-cont" id="receiveProgressCont"><div class="progress-bar" id="receiveProgressBar"></div></div>
         </div>
-        
-        <div id="downloadList"></div>
-        
-        <button class="back-btn" onclick="resetApp()">← Disconnect & Go Back</button>
     </div>
 
-    <div class="disclaimer">
-        <strong>Note:</strong> Strict corporate firewalls or VPNs may interfere with the P2P connection. For best results, ensure both devices are on the same network or have unrestricted internet access.<br><br>
-        <strong>Security:</strong> Dineshare does not store or scan your files. Please ensure you trust the sender and run local virus scans on received files.
+    <div class="ad-slot">
+        <p style="color: #94a3b8; font-size: 12px;">Sponsored Content</p>
     </div>
-
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
-
     <script>
-        // 1. FIREBASE SETUP
+        // 1. FIREBASE CONFIGURATION (REPLACE WITH YOURS)
         const firebaseConfig = {
-            apiKey: "AIzaSyA-NhlaD3XRLKEf_y6xCMOElXnx5IVWhIg",
-            authDomain: "dineshare-web.firebaseapp.com",
-            databaseURL: "https://dineshare-web-default-rtdb.firebaseio.com",
-            projectId: "dineshare-web",
-            storageBucket: "dineshare-web.firebasestorage.app",
-            messagingSenderId: "456148087993",
-            appId: "1:456148087993:web:041e5569a4722b64795768",
-            measurementId: "G-633V93EBW6"
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT.appspot.com",
+            messagingSenderId: "YOUR_ID",
+            appId: "YOUR_APP_ID"
         };
+
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // 2. WEBRTC GLOBALS
+        // 2. GLOBALS
+        let pc, dataChannel, fileReader;
+        const CHUNK_SIZE = 16384; 
         const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-        let peerConnection;
-        let dataChannel;
-        let currentRoomId = null;
-        let expirationTimer = null; // Used to kill dead rooms
 
-        const CHUNK_SIZE = 65536; // Increased to 64KB for faster modern transfer
-        let fileMetaData = null;
-        let receiveBuffer = [];
-        let receivedSize = 0;
-
-        // 3. UI NAVIGATION
-        function showScreen(screenId) {
-            document.getElementById('homeScreen').classList.add('hidden');
-            document.getElementById('senderScreen').classList.add('hidden');
-            document.getElementById('receiverScreen').classList.add('hidden');
-            document.getElementById(screenId).classList.remove('hidden');
-        }
-
-        function resetApp() {
-            if (peerConnection) peerConnection.close();
-            if (currentRoomId) db.ref(`rooms/${currentRoomId}`).remove();
-            if (expirationTimer) clearTimeout(expirationTimer);
-            location.reload();
+        // 3. UI LOGIC
+        function switchTab(tab) {
+            document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(tab + 'Panel').classList.add('active');
+            event.target.classList.add('active');
         }
 
         // 4. SENDER LOGIC
-        document.getElementById('generateBtn').addEventListener('click', async () => {
-            const fileInput = document.getElementById('fileInput');
-            if (!fileInput.files.length) return alert("Please select a file first.");
+        async function startSending() {
+            const file = document.getElementById('fileInput').files[0];
+            if (!file) return alert("Please select a file first!");
 
-            currentRoomId = Math.floor(100000 + Math.random() * 900000).toString();
-            document.getElementById('displayRoomCode').innerText = currentRoomId;
-            document.getElementById('generateBtn').classList.add('hidden');
-            document.getElementById('fileInput').classList.add('hidden');
-            document.getElementById('senderSubtitle').classList.add('hidden');
-            document.getElementById('senderRoomInfo').classList.remove('hidden');
+            const code = Math.floor(100000 + Math.random() * 900000).toString();
+            document.getElementById('sendCodeDisplay').innerText = code;
+            document.getElementById('sendStatus').innerText = "Waiting for receiver...";
 
-            const roomRef = db.ref(`rooms/${currentRoomId}`);
-            peerConnection = new RTCPeerConnection(configuration);
+            pc = new RTCPeerConnection(configuration);
+            setupConnectionListeners(pc, 'sendStatus');
 
-            dataChannel = peerConnection.createDataChannel("fileTransfer");
-            dataChannel.binaryType = 'arraybuffer';
-            
-            // ROOM EXPIRATION LOGIC (10 Minutes)
-            expirationTimer = setTimeout(() => {
-                if (peerConnection.connectionState !== 'connected') {
-                    db.ref(`rooms/${currentRoomId}`).remove();
-                    alert("Room code expired after 10 minutes. Please generate a new one.");
-                    resetApp();
-                }
-            }, 10 * 60 * 1000); 
+            dataChannel = pc.createDataChannel("fileTransfer");
+            dataChannel.onopen = () => sendFile(file);
 
-            dataChannel.onopen = () => {
-                clearTimeout(expirationTimer); // Stop the expiration timer!
-                document.getElementById('senderStatus').innerHTML = "🟢 Connected! The connection is active.";
-                document.getElementById('displayRoomCode').classList.add('hidden');
-                document.getElementById('shareInstruction').classList.add('hidden');
-                document.getElementById('expirationWarning').classList.add('hidden');
-                document.getElementById('sendAnotherBtn').classList.remove('hidden');
-                
-                cleanupFirebase(); 
-                sendFile(dataChannel, fileInput.files[0]);
-            };
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
 
-            peerConnection.onicecandidate = e => { if (e.candidate) roomRef.child('callerCandidates').push(e.candidate.toJSON()); };
+            const roomRef = db.ref('rooms/' + code);
+            roomRef.set({ offer: { type: offer.type, sdp: offer.sdp } });
 
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-            await roomRef.set({ offer: { type: offer.type, sdp: offer.sdp } });
-
-            roomRef.child('answer').on('value', async snapshot => {
-                if (snapshot.val() && !peerConnection.currentRemoteDescription) {
-                    await peerConnection.setRemoteDescription(new RTCSessionDescription(snapshot.val()));
+            roomRef.on('value', async (snapshot) => {
+                const data = snapshot.val();
+                if (data?.answer && !pc.currentRemoteDescription) {
+                    await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
                 }
             });
 
-            roomRef.child('calleeCandidates').on('child_added', async snapshot => {
-                if (snapshot.val()) await peerConnection.addIceCandidate(new RTCIceCandidate(snapshot.val()));
-            });
-        });
-
-        document.getElementById('nextFileInput').addEventListener('change', (e) => {
-            if(e.target.files.length > 0 && dataChannel.readyState === 'open') {
-                sendFile(dataChannel, e.target.files[0]);
-            }
-        });
-
-        // 5. RECEIVER LOGIC
-        document.getElementById('joinBtn').addEventListener('click', async () => {
-            currentRoomId = document.getElementById('roomInput').value.trim();
-            if (currentRoomId.length !== 6) return alert("Enter a valid 6-digit code.");
-
-            document.getElementById('receiverStatus').innerText = "🔄 Connecting to peer...";
-            document.getElementById('joinBtn').disabled = true;
-            document.getElementById('roomInput').disabled = true;
-
-            const roomRef = db.ref(`rooms/${currentRoomId}`);
-            const roomSnapshot = await roomRef.once('value');
-
-            if (!roomSnapshot.exists()) {
-                document.getElementById('receiverStatus').innerText = "❌ Room not found or expired.";
-                document.getElementById('joinBtn').disabled = false;
-                document.getElementById('roomInput').disabled = false;
-                return;
-            }
-
-            peerConnection = new RTCPeerConnection(configuration);
-
-            peerConnection.ondatachannel = event => {
-                dataChannel = event.channel;
-                dataChannel.binaryType = 'arraybuffer';
-                setupReceiverDataChannel(dataChannel);
+            pc.onicecandidate = e => {
+                if (e.candidate) roomRef.child('iceCandidates').push(e.candidate.toJSON());
             };
-
-            peerConnection.onicecandidate = e => { if (e.candidate) roomRef.child('calleeCandidates').push(e.candidate.toJSON()); };
-
-            const offer = roomSnapshot.val().offer;
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-
-            const answer = await peerConnection.createAnswer();
-            await peerConnection.setLocalDescription(answer);
-            await roomRef.update({ answer: { type: answer.type, sdp: answer.sdp } });
-
-            roomRef.child('callerCandidates').on('child_added', async snapshot => {
-                if (snapshot.val()) await peerConnection.addIceCandidate(new RTCIceCandidate(snapshot.val()));
-            });
-        });
-
-        function cleanupFirebase() {
-            if (currentRoomId) {
-                db.ref(`rooms/${currentRoomId}`).remove()
-                    .then(() => console.log("Firebase room deleted."));
-            }
         }
 
-        // 6. MODERN STREAMING MEMORY LOGIC (SENDER)
-        async function sendFile(channel, file) {
-            document.getElementById('senderStatus').innerHTML = `📤 Sending: <b>${file.name}</b>`;
-            document.getElementById('senderProgressCont').classList.remove('hidden');
-            document.getElementById('senderProgressBar').style.width = '0%';
-            document.getElementById('sendAnotherBtn').disabled = true;
-
-            const meta = { fileName: file.name, fileSize: file.size, fileType: file.type };
-            channel.send(JSON.stringify(meta));
+        function sendFile(file) {
+            document.getElementById('sendProgressCont').style.display = 'block';
+            dataChannel.send(JSON.stringify({ fileName: file.name, fileSize: file.size }));
 
             let offset = 0;
-            
-            // Loop using modern Blob.arrayBuffer() - Will NOT crash the browser on large files
-            while (offset < file.size) {
-                // Buffer backpressure control to prevent crashing the WebRTC tunnel
-                if (channel.bufferedAmount > channel.bufferedAmountLowThreshold || channel.bufferedAmount > 1024 * 1024 * 2) {
-                    await new Promise(resolve => {
-                        channel.onbufferedamountlow = () => {
-                            channel.onbufferedamountlow = null;
-                            resolve();
-                        };
-                    });
+            fileReader = new FileReader();
+            fileReader.onload = (e) => {
+                dataChannel.send(e.target.result);
+                offset += e.target.result.byteLength;
+                document.getElementById('sendProgressBar').style.width = (offset / file.size * 100) + '%';
+                if (offset < file.size) readNextChunk();
+                else {
+                    document.getElementById('sendStatus').innerText = "✅ Transfer Complete!";
+                    cleanup(document.getElementById('sendCodeDisplay').innerText);
                 }
+            };
 
+            const readNextChunk = () => {
                 const slice = file.slice(offset, offset + CHUNK_SIZE);
-                const buffer = await slice.arrayBuffer(); // Streams chunk from disk
-                channel.send(buffer);
-                offset += buffer.byteLength;
-
-                if (offset % (CHUNK_SIZE * 20) === 0 || offset === file.size) {
-                    const progress = (offset / file.size) * 100;
-                    document.getElementById('senderProgressBar').style.width = progress + '%';
-                }
-            }
-
-            document.getElementById('senderStatus').innerText = "✅ File sent! You can send another.";
-            document.getElementById('sendAnotherBtn').disabled = false;
-            document.getElementById('nextFileInput').value = "";
+                fileReader.readAsArrayBuffer(slice);
+            };
+            readNextChunk();
         }
 
-        // RECEIVER LOGIC
-        function setupReceiverDataChannel(channel) {
-            channel.onopen = () => {
-                document.getElementById('receiverStatus').innerHTML = "🟢 Connected! Waiting for files...";
-            };
+        // 5. RECEIVER LOGIC
+        async function startReceiving() {
+            const code = document.getElementById('joinCode').value;
+            if (code.length !== 6) return alert("Enter 6-digit code");
 
-            channel.onmessage = event => {
-                if (typeof event.data === 'string') {
-                    fileMetaData = JSON.parse(event.data);
-                    receiveBuffer = [];
-                    receivedSize = 0;
-                    document.getElementById('receiverStatus').innerHTML = `📥 Receiving: <b>${fileMetaData.fileName}</b>`;
-                    document.getElementById('receiverProgressCont').classList.remove('hidden');
-                    document.getElementById('receiverProgressBar').style.width = '0%';
+            pc = new RTCPeerConnection(configuration);
+            setupConnectionListeners(pc, 'receiveStatus');
+
+            pc.ondatachannel = (event) => setupReceiveChannel(event.channel);
+
+            const roomRef = db.ref('rooms/' + code);
+            const snapshot = await roomRef.once('value');
+            const data = snapshot.val();
+
+            if (!data) return alert("Room not found!");
+
+            await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            roomRef.update({ answer: { type: answer.type, sdp: answer.sdp } });
+
+            roomRef.child('iceCandidates').on('child_added', (snapshot) => {
+                pc.addIceCandidate(new RTCIceCandidate(snapshot.val()));
+            });
+        }
+
+        function setupReceiveChannel(channel) {
+            let writer, fileInfo, receivedSize = 0;
+
+            channel.onmessage = async (e) => {
+                if (typeof e.data === 'string') {
+                    fileInfo = JSON.parse(e.data);
+                    document.getElementById('receiveProgressCont').style.display = 'block';
+                    document.getElementById('receiveStatus').innerHTML = `Downloading: <b>${fileInfo.fileName}</b>`;
+                    const fileStream = streamSaver.createWriteStream(fileInfo.fileName, { size: fileInfo.fileSize });
+                    writer = fileStream.getWriter();
                 } else {
-                    receiveBuffer.push(event.data);
-                    receivedSize += event.data.byteLength;
-
-                    // Throttle UI updates for performance on large files
-                    if (receivedSize % (CHUNK_SIZE * 20) === 0 || receivedSize === fileMetaData.fileSize) {
-                        const progress = (receivedSize / fileMetaData.fileSize) * 100;
-                        document.getElementById('receiverProgressBar').style.width = progress + '%';
-                    }
-
-                    if (receivedSize === fileMetaData.fileSize) {
-                        document.getElementById('receiverStatus').innerText = "✅ File received! Waiting for more...";
-
-                        // Receiver Memory handling: Compiles the Blob
-                        const receivedFile = new Blob(receiveBuffer, { type: fileMetaData.fileType });
-                        const downloadUrl = URL.createObjectURL(receivedFile);
-
-                        const downloadList = document.getElementById('downloadList');
-                        const btnHtml = `<a href="${downloadUrl}" download="${fileMetaData.fileName}" style="text-decoration: none;"><button style="background: var(--success);">💾 Save ${fileMetaData.fileName}</button></a>`;
-                        downloadList.insertAdjacentHTML('afterbegin', btnHtml);
-                        
-                        setTimeout(() => {
-                            document.getElementById('receiverProgressCont').classList.add('hidden');
-                        }, 1000);
-                        
-                        // Clear buffer to free up RAM for the next file
-                        receiveBuffer = []; 
+                    receivedSize += e.data.byteLength;
+                    await writer.write(new Uint8Array(e.data));
+                    document.getElementById('receiveProgressBar').style.width = (receivedSize / fileInfo.fileSize * 100) + '%';
+                    
+                    if (receivedSize === fileInfo.fileSize) {
+                        writer.close();
+                        document.getElementById('receiveStatus').innerText = "✅ Download Finished!";
                     }
                 }
             };
+        }
+
+        // 6. STABILITY & CLEANUP
+        function setupConnectionListeners(pc, statusId) {
+            pc.oniceconnectionstatechange = () => {
+                const state = pc.iceConnectionState;
+                if (state === 'failed' || state === 'disconnected') {
+                    document.getElementById(statusId).innerText = "❌ Connection Lost. Try again.";
+                }
+            };
+        }
+
+        function cleanup(code) {
+            setTimeout(() => { db.ref('rooms/' + code).remove(); }, 5000);
         }
     </script>
 </body>
-
 </html>
