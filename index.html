@@ -34,6 +34,8 @@
         .progress-bar { width: 0%; height: 100%; background: var(--primary); transition: width 0.1s; }
         .file-counter { font-size: 13px; color: #64748b; margin-top: 8px; display: none; font-weight: 600; }
         
+        .warning-text { font-size: 12px; color: #d97706; margin-top: 12px; display: none; font-weight: 600; background: #fef3c7; padding: 10px; border-radius: 6px; }
+
         .ad-slot { margin-top: 30px; width: 100%; max-width: 500px; min-height: 100px; background: #f1f5f9; border-radius: 8px; display: flex; align-items: center; justify-content: center; border: 1px dashed #cbd5e1; flex-direction: column; }
     </style>
 </head>
@@ -49,7 +51,6 @@
         </div>
 
         <div id="sendPanel" class="panel active">
-            
             <select id="networkMode" class="network-select">
                 <option value="internet">🌐 Send via Internet (Works anywhere, may use data)</option>
                 <option value="local">🏠 Send via Local Wi-Fi (Must be on same Wi-Fi, no data used)</option>
@@ -79,6 +80,10 @@
             <div id="receiveStatus" class="status">Waiting for code...</div>
             <div class="progress-cont" id="receiveProgressCont"><div class="progress-bar" id="receiveProgressBar"></div></div>
             <div class="file-counter" id="receiveFileCounter"></div>
+            
+            <div id="downloadWarning" class="warning-text">
+                Please authorize multiple downloads if prompted by your browser to ensure all files are saved.
+            </div>
         </div>
     </div>
 
@@ -87,28 +92,15 @@
     </div>
     <script>
         // 1. FIREBASE CONFIGURATION (REPLACE WITH YOURS)
-const firebaseConfig = {
-
-  apiKey: "AIzaSyA-NhlaD3XRLKEf_y6xCMOElXnx5IVWhIg",
-
-  authDomain: "dineshare-web.firebaseapp.com",
-
-  databaseURL: "https://dineshare-web-default-rtdb.firebaseio.com",
-
-  projectId: "dineshare-web",
-
-  storageBucket: "dineshare-web.firebasestorage.app",
-
-  messagingSenderId: "456148087993",
-
-  appId: "1:456148087993:web:041e5569a4722b64795768",
-
-  measurementId: "G-633V93EBW6"
-
-};
-
-
-        
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_PROJECT.appspot.com",
+            messagingSenderId: "YOUR_ID",
+            appId: "YOUR_APP_ID"
+        };
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
@@ -192,16 +184,18 @@ const firebaseConfig = {
 
             for (let i = 0; i < selectedFiles.length; i++) {
                 const file = selectedFiles[i];
+                const isLastFile = i === selectedFiles.length - 1;
                 
                 counterLabel.innerText = `Sending file ${i + 1} of ${selectedFiles.length}`;
                 document.getElementById('sendStatus').innerText = `Sending: ${file.name}`;
 
+                // Include totalFiles count so receiver knows if they need to expect multiples
                 dataChannel.send(JSON.stringify({ 
                     type: 'header', 
                     fileName: file.name, 
                     fileType: file.type,
                     fileSize: file.size,
-                    isLastFile: i === selectedFiles.length - 1
+                    totalFiles: selectedFiles.length
                 }));
 
                 let offset = 0;
@@ -231,7 +225,7 @@ const firebaseConfig = {
                     }
                 }
                 
-                dataChannel.send(JSON.stringify({ type: 'eof' }));
+                dataChannel.send(JSON.stringify({ type: 'eof', isLastFile: isLastFile }));
             }
             
             document.getElementById('sendStatus').innerText = "✅ All Files Sent Successfully!";
@@ -243,7 +237,6 @@ const firebaseConfig = {
             const code = document.getElementById('joinCode').value.toUpperCase();
             if (code.length !== 6) return alert("Enter a valid 6-character code");
 
-            // No more directory picker asking where to save
             document.getElementById('receiveStatus').innerText = "Connecting...";
 
             pc = new RTCPeerConnection(getWebRTCConfig());
@@ -291,10 +284,15 @@ const firebaseConfig = {
                         currentFileName = msg.fileName;
                         currentFileType = msg.fileType || 'application/octet-stream';
                         receivedBytes = 0;
-                        fileChunks = []; // Reset chunks for the new file
+                        fileChunks = []; 
+                        
+                        // Show warning only if receiving more than 1 file
+                        if (msg.totalFiles > 1) {
+                            document.getElementById('downloadWarning').style.display = 'block';
+                        }
                     } 
                     else if (msg.type === 'eof') {
-                        // File finished, trigger automatic download
+                        
                         const blob = new Blob(fileChunks, { type: currentFileType });
                         const url = URL.createObjectURL(blob);
                         
@@ -304,20 +302,20 @@ const firebaseConfig = {
                         document.body.appendChild(a);
                         a.click();
                         
-                        // Clean up memory
                         setTimeout(() => {
                             document.body.removeChild(a);
                             URL.revokeObjectURL(url);
                         }, 1000);
                         
-                        fileChunks = []; // Clear RAM
+                        fileChunks = []; 
 
                         if (msg.isLastFile) {
                             document.getElementById('receiveStatus').innerText = "✅ All Files Received Successfully!";
+                            document.getElementById('receiveProgressBar').style.width = '100%';
+                            document.getElementById('downloadWarning').style.display = 'none'; // Hide warning when done
                         }
                     }
                 } else {
-                    // Save chunk to memory array
                     fileChunks.push(e.data);
                     receivedBytes += e.data.byteLength;
                     
