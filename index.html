@@ -52,8 +52,8 @@
 
         <div id="sendPanel" class="panel active">
             <select id="networkMode" class="network-select">
-                <option value="internet">🌐 Send via Internet (Works anywhere, may use data)</option>
-                <option value="local">🏠 Send via Local Wi-Fi (Must be on same Wi-Fi, no data used)</option>
+                <option value="internet">🌐 Send via Internet</option>
+                <option value="local">🏠 Send via Local Wi-Fi</option>
             </select>
 
             <label class="upload-btn">
@@ -82,7 +82,7 @@
             <div class="file-counter" id="receiveFileCounter"></div>
             
             <div id="downloadWarning" class="warning-text">
-                Please authorize multiple downloads if prompted by your browser to ensure all files are saved.
+                Please authorize multiple downloads if prompted.
             </div>
         </div>
     </div>
@@ -90,8 +90,9 @@
     <div class="ad-slot">
         <p style="color: #94a3b8; font-size: 12px; margin: 0;">Sponsored Content</p>
     </div>
+
     <script>
-        // 1. FIREBASE CONFIGURATION (REPLACE WITH YOURS)
+        // 1. FIREBASE CONFIGURATION
 const firebaseConfig = {
 
   apiKey: "AIzaSyA-NhlaD3XRLKEf_y6xCMOElXnx5IVWhIg",
@@ -115,17 +116,14 @@ const firebaseConfig = {
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // 🛑 ZERO-IDLE RULE 1: Disconnect immediately on page load to save limits
+        // Default state: Offline
         db.goOffline();
 
-        // 2. GLOBALS
         let pc, dataChannel;
         let selectedFiles = [];
         let currentRoomCode = null; 
-        let connectionTimeout = null; 
         const CHUNK_SIZE = 16384; 
 
-        // 3. UI & UTILS
         function switchTab(tab) {
             document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -153,38 +151,60 @@ const firebaseConfig = {
             return result;
         }
 
-        // 4. SENDER LOGIC
+        // ==========================================
+        // SENDER LOGIC (THE ROOM BOSS)
+        // ==========================================
         async function startSending() {
             if (selectedFiles.length === 0) return alert("Select files first!");
 
-            // 🟢 ZERO-IDLE RULE 2: Wake up Firebase only when user initiates action
-            db.goOnline();
-
+            db.goOnline(); // Wake up Firebase
             currentRoomCode = generateCode();
+            
             document.getElementById('sendCodeDisplay').innerText = currentRoomCode;
-            document.getElementById('sendStatus').innerText = "Waiting for receiver (Code expires in 1:30)...";
+            document.getElementById('sendStatus').innerText = "Waiting for receiver (Code expires in 90s)...";
             document.getElementById('generateBtn').disabled = true;
-            document.getElementById('networkMode').disabled = true;
 
             pc = new RTCPeerConnection(getWebRTCConfig());
-            setupConnectionListeners(pc, 'sendStatus', currentRoomCode, 'sender');
+            const roomRef = db.ref('rooms/' + currentRoomCode);
+
+            // Safety net: If sender closes tab early, delete room instantly
+            roomRef.onDisconnect().remove();
+
+            // STRICT 90-SECOND KILL SWITCH
+            const timeoutId = setTimeout(() => {
+                if (pc.iceConnectionState !== 'connected') {
+                    roomRef.remove(); // Delete room from DB
+                    db.goOffline();   // Disconnect
+                    document.getElementById('sendStatus').innerText = "⏱️ Expired. Code destroyed.";
+                    document.getElementById('generateBtn').disabled = false;
+                    document.getElementById('sendCodeDisplay').innerText = "";
+                    pc.close();
+                }
+            }, 90000);
+
+            pc.oniceconnectionstatechange = () => {
+                if (pc.iceConnectionState === 'connected') {
+                    clearTimeout(timeoutId);
+                    document.getElementById('sendStatus').innerText = "🟢 Connected! Transferring...";
+                    // SENDER cleans up the room and leaves Firebase
+                    roomRef.remove().then(() => db.goOffline()); 
+                } else if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+                    document.getElementById('sendStatus').innerText = "❌ Connection Lost.";
+                    roomRef.remove();
+                    db.goOffline();
+                }
+            };
 
             dataChannel = pc.createDataChannel("fileTransfer");
             dataChannel.onopen = () => processFileQueue();
 
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
-
-            const roomRef = db.ref('rooms/' + currentRoomCode);
-            
-            // Tell server to delete room if Sender suddenly closes tab before connection
-            roomRef.onDisconnect().remove(); 
             await roomRef.set({ offer: { type: offer.type, sdp: offer.sdp } });
 
             roomRef.child('answer').on('value', async (snapshot) => {
-                const answer = snapshot.val();
-                if (answer && !pc.currentRemoteDescription) {
-                    await pc.setRemoteDescription(new RTCSessionDescription(answer));
+                if (snapshot.val() && !pc.currentRemoteDescription) {
+                    await pc.setRemoteDescription(new RTCSessionDescription(snapshot.val()));
                 }
             });
 
@@ -195,17 +215,6 @@ const firebaseConfig = {
             roomRef.child('receiverCandidates').on('child_added', snapshot => {
                 if (snapshot.val()) pc.addIceCandidate(new RTCIceCandidate(snapshot.val()));
             });
-
-            // ⏱️ 90-SECOND EXPIRE RULE: Sender deletes room if no one joins
-            connectionTimeout = setTimeout(() => {
-                if (pc && pc.iceConnectionState !== 'connected') {
-                    forceCleanup(currentRoomCode, true); // true = Delete the room
-                    document.getElementById('sendStatus').innerText = "⏱️ Code expired. Please generate a new one.";
-                    document.getElementById('generateBtn').disabled = false;
-                    document.getElementById('networkMode').disabled = false;
-                    document.getElementById('sendCodeDisplay').innerText = "";
-                }
-            }, 90000);
         }
 
         async function processFileQueue() {
@@ -222,13 +231,7 @@ const firebaseConfig = {
                 counterLabel.innerText = `Sending file ${i + 1} of ${selectedFiles.length}`;
                 document.getElementById('sendStatus').innerText = `Sending: ${file.name}`;
 
-                dataChannel.send(JSON.stringify({ 
-                    type: 'header', 
-                    fileName: file.name, 
-                    fileType: file.type,
-                    fileSize: file.size,
-                    totalFiles: selectedFiles.length
-                }));
+                dataChannel.send(JSON.stringify({ type: 'header', fileName: file.name, fileType: file.type, fileSize: file.size, totalFiles: selectedFiles.length }));
 
                 let offset = 0;
                 const readSlice = o => new Promise(resolve => {
@@ -239,58 +242,54 @@ const firebaseConfig = {
 
                 while (offset < file.size) {
                     const chunk = await readSlice(offset);
-                    
                     if (dataChannel.bufferedAmount > dataChannel.bufferedAmountLowThreshold) {
-                        await new Promise(resolve => {
-                            dataChannel.onbufferedamountlow = () => {
-                                dataChannel.onbufferedamountlow = null;
-                                resolve();
-                            };
-                        });
+                        await new Promise(resolve => { dataChannel.onbufferedamountlow = () => { dataChannel.onbufferedamountlow = null; resolve(); }; });
                     }
-
                     dataChannel.send(chunk);
                     offset += chunk.byteLength;
-                    
                     if (offset % (CHUNK_SIZE * 50) === 0 || offset >= file.size) {
                         document.getElementById('sendProgressBar').style.width = (offset / file.size * 100) + '%';
                     }
                 }
-                
                 dataChannel.send(JSON.stringify({ type: 'eof', isLastFile: isLastFile }));
             }
-            
-            document.getElementById('sendStatus').innerText = "✅ All Files Sent Successfully!";
+            document.getElementById('sendStatus').innerText = "✅ All Files Sent!";
         }
 
-        // 5. RECEIVER LOGIC
+        // ==========================================
+        // RECEIVER LOGIC (READ ONLY, NO DELETING)
+        // ==========================================
         async function startReceiving() {
             currentRoomCode = document.getElementById('joinCode').value.toUpperCase();
-            if (currentRoomCode.length !== 6) return alert("Enter a valid 6-character code");
+            if (currentRoomCode.length !== 6) return alert("Enter a valid code");
 
-            // 🟢 ZERO-IDLE RULE 2: Wake up Firebase
-            db.goOnline();
-
+            db.goOnline(); // Wake up Firebase
             document.getElementById('receiveStatus').innerText = "Connecting...";
 
             pc = new RTCPeerConnection(getWebRTCConfig());
-            setupConnectionListeners(pc, 'receiveStatus', currentRoomCode, 'receiver');
+            const roomRef = db.ref('rooms/' + currentRoomCode);
+
+            pc.oniceconnectionstatechange = () => {
+                if (pc.iceConnectionState === 'connected') {
+                    document.getElementById('receiveStatus').innerText = "🟢 Connected! Transferring...";
+                    // RECEIVER JUST GOES OFFLINE. NO DELETING ALLOWED.
+                    db.goOffline();
+                } else if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+                    document.getElementById('receiveStatus').innerText = "❌ Connection Lost.";
+                    db.goOffline();
+                }
+            };
 
             pc.ondatachannel = (event) => setupReceiveChannel(event.channel);
 
-            const roomRef = db.ref('rooms/' + currentRoomCode);
-            roomRef.onDisconnect().remove(); // Server-side cleanup if tab closes during setup
-
             const offerSnap = await roomRef.child('offer').once('value');
-            const offer = offerSnap.val();
-
-            if (!offer) {
-                forceCleanup(null, false); 
-                document.getElementById('receiveStatus').innerText = "❌ Transfer code not found.";
+            if (!offerSnap.exists()) {
+                db.goOffline(); 
+                document.getElementById('receiveStatus').innerText = "❌ Code not found.";
                 return alert("Transfer code not found or expired.");
             }
 
-            await pc.setRemoteDescription(new RTCSessionDescription(offer));
+            await pc.setRemoteDescription(new RTCSessionDescription(offerSnap.val()));
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             
@@ -303,61 +302,31 @@ const firebaseConfig = {
             roomRef.child('senderCandidates').on('child_added', (snapshot) => {
                 if (snapshot.val()) pc.addIceCandidate(new RTCIceCandidate(snapshot.val()));
             });
-
-            // ⏱️ 90-SECOND TIMER: Receiver timeout
-            connectionTimeout = setTimeout(() => {
-                if (pc && pc.iceConnectionState !== 'connected') {
-                    // Sender's timeout will delete the DB, Receiver just disconnects locally
-                    forceCleanup(currentRoomCode, false); 
-                    document.getElementById('receiveStatus').innerText = "⏱️ Connection timed out.";
-                }
-            }, 90000);
         }
 
         async function setupReceiveChannel(channel) {
-            let currentFileSize = 0;
-            let receivedBytes = 0;
-            let fileChunks = [];
-            let currentFileName = "";
-            let currentFileType = "";
-
+            let currentFileSize = 0, receivedBytes = 0, fileChunks = [], currentFileName = "", currentFileType = "";
             document.getElementById('receiveProgressCont').style.display = 'block';
             document.getElementById('receiveFileCounter').style.display = 'block';
 
             channel.onmessage = async (e) => {
                 if (typeof e.data === 'string') {
                     const msg = JSON.parse(e.data);
-                    
                     if (msg.type === 'header') {
                         document.getElementById('receiveStatus').innerText = `Receiving: ${msg.fileName}`;
-                        currentFileSize = msg.fileSize;
-                        currentFileName = msg.fileName;
-                        currentFileType = msg.fileType || 'application/octet-stream';
-                        receivedBytes = 0;
-                        fileChunks = []; 
-                        
-                        if (msg.totalFiles > 1) {
-                            document.getElementById('downloadWarning').style.display = 'block';
-                        }
+                        currentFileSize = msg.fileSize; currentFileName = msg.fileName; currentFileType = msg.fileType || 'application/octet-stream';
+                        receivedBytes = 0; fileChunks = []; 
+                        if (msg.totalFiles > 1) document.getElementById('downloadWarning').style.display = 'block';
                     } 
                     else if (msg.type === 'eof') {
                         const blob = new Blob(fileChunks, { type: currentFileType });
                         const url = URL.createObjectURL(blob);
-                        
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = currentFileName;
-                        document.body.appendChild(a);
-                        a.click();
-                        
-                        setTimeout(() => {
-                            document.body.removeChild(a);
-                            URL.revokeObjectURL(url); 
-                        }, 1000);
+                        const a = document.createElement('a'); a.href = url; a.download = currentFileName;
+                        document.body.appendChild(a); a.click();
+                        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
                         fileChunks = []; 
-
                         if (msg.isLastFile) {
-                            document.getElementById('receiveStatus').innerText = "✅ All Files Received Successfully!";
+                            document.getElementById('receiveStatus').innerText = "✅ All Files Received!";
                             document.getElementById('receiveProgressBar').style.width = '100%';
                             document.getElementById('downloadWarning').style.display = 'none'; 
                         }
@@ -365,91 +334,12 @@ const firebaseConfig = {
                 } else {
                     fileChunks.push(e.data);
                     receivedBytes += e.data.byteLength;
-                    
                     if (receivedBytes % (CHUNK_SIZE * 50) === 0 || receivedBytes >= currentFileSize) {
                         document.getElementById('receiveProgressBar').style.width = (receivedBytes / currentFileSize * 100) + '%';
                     }
                 }
             };
         }
-
-        // 6. RELIABILITY & CLEANUP LOGIC
-        function setupConnectionListeners(pc, statusId, code, role) {
-            pc.oniceconnectionstatechange = () => {
-                const state = pc.iceConnectionState;
-                
-                if (state === 'connected') {
-                    document.getElementById(statusId).innerText = "🟢 Connected! Transferring...";
-                    if (connectionTimeout) clearTimeout(connectionTimeout); // Stop the 90s timer
-                    
-                    if (role === 'receiver') {
-                        // 🛡️ THE 30-SECOND SHIELD: 
-                        // Wait 30s to ensure Sender completely locks in before deleting DB
-                        const capturedCode = code; 
-                        setTimeout(() => {
-                            forceCleanup(capturedCode, true); // true = delete room
-                        }, 30000); 
-                    } else {
-                        // Sender just hangs up Firebase connection immediately
-                        forceCleanup(code, false); 
-                    }
-                } 
-                else if (state === 'failed' || state === 'disconnected' || state === 'closed') {
-                    document.getElementById(statusId).innerText = "❌ Connection Lost.";
-                    forceCleanup(code, true); 
-                }
-            };
-        }
-
-        // 🧹 MASTER CLEANUP FUNCTION
-        function forceCleanup(code, shouldDeleteRoom = true) {
-            if (connectionTimeout) clearTimeout(connectionTimeout); 
-            
-            if (!code) {
-                db.goOffline(); 
-                return;
-            }
-
-            const roomRef = db.ref('rooms/' + code);
-            
-            // 1. Stop listening to save bandwidth
-            roomRef.off(); 
-            roomRef.child('answer').off();
-            roomRef.child('senderCandidates').off();
-            roomRef.child('receiverCandidates').off();
-            
-            // 2. CRITICAL FIX: Cancel the server-side self-destruct BEFORE going offline
-            roomRef.onDisconnect().cancel().then(() => {
-                
-                if (shouldDeleteRoom) {
-                    // Receiver deletes the room, then goes offline
-                    roomRef.remove().then(() => {
-                        db.goOffline(); 
-                    }).catch(() => {
-                        db.goOffline(); 
-                    });
-                } else {
-                    // Sender leaves the room intact and just goes offline safely
-                    db.goOffline(); 
-                }
-                
-            }).catch(() => {
-                db.goOffline(); // Failsafe
-            });
-            
-            // Reset code so beforeunload doesn't fire unnecessarily
-            if (currentRoomCode === code) {
-                currentRoomCode = null;
-            }
-        }
-
-        // 🚪 If user hits back button, refreshes, or closes tab
-        window.addEventListener('beforeunload', () => {
-            if (currentRoomCode) {
-                forceCleanup(currentRoomCode, true);
-            }
-        });
-
     </script>
 </body>
 </html>
