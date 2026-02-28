@@ -44,7 +44,7 @@
 
     <div class="container">
         <h1>DineShare</h1>
-        <div class="subtitle">Fast & Simple File Transfer <span class="version">v1.1</span></div>
+        <div class="subtitle">Fast & Simple File Transfer <span class="version">v1.2</span></div>
         
         <div class="tab-buttons">
             <button class="tab-btn active" onclick="switchTab('send')">Send</button>
@@ -114,6 +114,7 @@ const firebaseConfig = {
 
 };
 
+
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
@@ -140,9 +141,24 @@ const firebaseConfig = {
             }
         }
 
+        // v1.2 FIX: Added a free public TURN server to prevent "ICE failed" behind strict NATs
         function getWebRTCConfig() {
             const mode = document.getElementById('networkMode').value;
-            return mode === 'local' ? { iceServers: [] } : { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+            
+            if (mode === 'local') {
+                return { iceServers: [] }; // Local Wi-Fi only (no internet needed)
+            }
+            
+            return { 
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' }, // Google's free STUN
+                    { 
+                        urls: 'turn:relay.metered.ca:80',     // Public TURN server (Metered/OpenRelay)
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    }
+                ] 
+            };
         }
 
         function generateCode() {
@@ -171,19 +187,17 @@ const firebaseConfig = {
             roomRef.onDisconnect().remove();
 
             // 🛑 BLIND 60-SECOND AUTO-KILL (SENDER)
-            // No matter what happens, drop Firebase in exactly 60 seconds.
             setTimeout(() => {
-                roomRef.remove().catch(() => {}); // Failsafe silently if already removed
+                roomRef.remove().catch(() => {}); 
                 db.goOffline();
                 console.log("60s blind timeout reached. Firebase offline.");
-                // We don't change the UI status here because the transfer might be actively happening via WebRTC!
             }, 60000);
 
             pc.oniceconnectionstatechange = () => {
                 if (pc.iceConnectionState === 'connected') {
                     document.getElementById('sendStatus').innerText = "🟢 Connected! Preparing transfer...";
                 } else if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-                    document.getElementById('sendStatus').innerText = "❌ Connection Lost.";
+                    document.getElementById('sendStatus').innerText = "❌ Connection Lost or Blocked by Firewall.";
                 }
             };
 
@@ -265,7 +279,6 @@ const firebaseConfig = {
             const roomRef = db.ref('rooms/' + currentRoomCode);
 
             // 🛑 BLIND 60-SECOND AUTO-KILL (RECEIVER)
-            // No matter what happens, drop Firebase in exactly 60 seconds.
             setTimeout(() => {
                 db.goOffline();
                 console.log("60s blind timeout reached. Firebase offline.");
@@ -275,7 +288,7 @@ const firebaseConfig = {
                 if (pc.iceConnectionState === 'connected') {
                     document.getElementById('receiveStatus').innerText = "🟢 Connected! Waiting for files...";
                 } else if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-                    document.getElementById('receiveStatus').innerText = "❌ Connection Lost.";
+                    document.getElementById('receiveStatus').innerText = "❌ Connection Lost or Blocked by Firewall.";
                 }
             };
 
