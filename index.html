@@ -20,12 +20,12 @@
         .panel.active { display: block; }
         input[type="file"], input[type="text"] { width: 100%; padding: 12px; margin: 15px 0; border: 2px border #e2e8f0; border-radius: 8px; box-sizing: border-box; }
         button.action-btn { width: 100%; padding: 15px; border: none; border-radius: 8px; background: var(--primary); color: white; font-size: 16px; font-weight: bold; cursor: pointer; }
-        .status { margin-top: 15px; font-size: 14px; color: #64748b; min-height: 20px; }
+        .status { margin-top: 15px; font-size: 14px; color: #64748b; min-height: 20px; font-weight: 500; }
         .progress-cont { width: 100%; height: 10px; background: #e2e8f0; border-radius: 5px; margin-top: 20px; overflow: hidden; display: none; }
         .progress-bar { width: 0%; height: 100%; background: var(--primary); transition: width 0.1s; }
         
         /* AD SPACE - Optimized for Native Banners */
-        .ad-slot { margin-top: 30px; width: 100%; max-width: 500px; min-height: 100px; background: #f1f5f9; border-radius: 8px; display: flex; align-items: center; justify-content: center; border: 1px dashed #cbd5e1; }
+        .ad-slot { margin-top: 30px; width: 100%; max-width: 500px; min-height: 100px; background: #f1f5f9; border-radius: 8px; display: flex; align-items: center; justify-content: center; border: 1px dashed #cbd5e1; flex-direction: column; }
     </style>
 </head>
 <body>
@@ -54,25 +54,36 @@
     </div>
 
     <div class="ad-slot">
-        <p style="color: #94a3b8; font-size: 12px;">Sponsored Content</p>
+        <p style="color: #94a3b8; font-size: 12px; margin: 0;">Sponsored Content</p>
     </div>
     <script>
         // 1. FIREBASE CONFIGURATION (REPLACE WITH YOURS)
-        const firebaseConfig = {
-            apiKey: "YOUR_API_KEY",
-            authDomain: "YOUR_PROJECT.firebaseapp.com",
-            databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
-            projectId: "YOUR_PROJECT_ID",
-            storageBucket: "YOUR_PROJECT.appspot.com",
-            messagingSenderId: "YOUR_ID",
-            appId: "YOUR_APP_ID"
-        };
+const firebaseConfig = {
+
+  apiKey: "AIzaSyA-NhlaD3XRLKEf_y6xCMOElXnx5IVWhIg",
+
+  authDomain: "dineshare-web.firebaseapp.com",
+
+  databaseURL: "https://dineshare-web-default-rtdb.firebaseio.com",
+
+  projectId: "dineshare-web",
+
+  storageBucket: "dineshare-web.firebasestorage.app",
+
+  messagingSenderId: "456148087993",
+
+  appId: "1:456148087993:web:041e5569a4722b64795768",
+
+  measurementId: "G-633V93EBW6"
+
+};
+
 
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
         // 2. GLOBALS
-        let pc, dataChannel, fileReader;
+        let pc, dataChannel;
         const CHUNK_SIZE = 16384; 
         const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
@@ -105,6 +116,7 @@
             const roomRef = db.ref('rooms/' + code);
             roomRef.set({ offer: { type: offer.type, sdp: offer.sdp } });
 
+            // Listen for Receiver's Answer
             roomRef.on('value', async (snapshot) => {
                 const data = snapshot.val();
                 if (data?.answer && !pc.currentRemoteDescription) {
@@ -112,33 +124,55 @@
                 }
             });
 
+            // Push Sender's ICE Candidates to Firebase
             pc.onicecandidate = e => {
-                if (e.candidate) roomRef.child('iceCandidates').push(e.candidate.toJSON());
+                if (e.candidate) roomRef.child('senderCandidates').push(e.candidate.toJSON());
             };
+
+            // Listen for Receiver's ICE Candidates
+            roomRef.child('receiverCandidates').on('child_added', snapshot => {
+                pc.addIceCandidate(new RTCIceCandidate(snapshot.val()));
+            });
         }
 
-        function sendFile(file) {
+        async function sendFile(file) {
             document.getElementById('sendProgressCont').style.display = 'block';
             dataChannel.send(JSON.stringify({ fileName: file.name, fileSize: file.size }));
 
             let offset = 0;
-            fileReader = new FileReader();
-            fileReader.onload = (e) => {
-                dataChannel.send(e.target.result);
-                offset += e.target.result.byteLength;
-                document.getElementById('sendProgressBar').style.width = (offset / file.size * 100) + '%';
-                if (offset < file.size) readNextChunk();
-                else {
-                    document.getElementById('sendStatus').innerText = "✅ Transfer Complete!";
-                    cleanup(document.getElementById('sendCodeDisplay').innerText);
-                }
-            };
+            // Buffer control to prevent crashing on massive files
+            dataChannel.bufferedAmountLowThreshold = 1024 * 1024; // 1MB
 
-            const readNextChunk = () => {
-                const slice = file.slice(offset, offset + CHUNK_SIZE);
-                fileReader.readAsArrayBuffer(slice);
-            };
-            readNextChunk();
+            const readSlice = o => new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = e => resolve(e.target.result);
+                reader.readAsArrayBuffer(file.slice(o, o + CHUNK_SIZE));
+            });
+
+            while (offset < file.size) {
+                const chunk = await readSlice(offset);
+                
+                // If the WebRTC pipeline is full, pause and wait for it to clear
+                if (dataChannel.bufferedAmount > dataChannel.bufferedAmountLowThreshold) {
+                    await new Promise(resolve => {
+                        dataChannel.onbufferedamountlow = () => {
+                            dataChannel.onbufferedamountlow = null;
+                            resolve();
+                        };
+                    });
+                }
+
+                dataChannel.send(chunk);
+                offset += chunk.byteLength;
+                
+                // Update UI every few chunks to save UI thread performance
+                if (offset % (CHUNK_SIZE * 50) === 0 || offset >= file.size) {
+                    document.getElementById('sendProgressBar').style.width = (offset / file.size * 100) + '%';
+                }
+            }
+            
+            document.getElementById('sendStatus').innerText = "✅ Transfer Complete!";
+            cleanup(document.getElementById('sendCodeDisplay').innerText);
         }
 
         // 5. RECEIVER LOGIC
@@ -162,7 +196,13 @@
             await pc.setLocalDescription(answer);
             roomRef.update({ answer: { type: answer.type, sdp: answer.sdp } });
 
-            roomRef.child('iceCandidates').on('child_added', (snapshot) => {
+            // Push Receiver's ICE Candidates to Firebase
+            pc.onicecandidate = e => {
+                if (e.candidate) roomRef.child('receiverCandidates').push(e.candidate.toJSON());
+            };
+
+            // Listen for Sender's ICE Candidates
+            roomRef.child('senderCandidates').on('child_added', (snapshot) => {
                 pc.addIceCandidate(new RTCIceCandidate(snapshot.val()));
             });
         }
@@ -175,14 +215,21 @@
                     fileInfo = JSON.parse(e.data);
                     document.getElementById('receiveProgressCont').style.display = 'block';
                     document.getElementById('receiveStatus').innerHTML = `Downloading: <b>${fileInfo.fileName}</b>`;
+                    
+                    // Create direct-to-disk stream
                     const fileStream = streamSaver.createWriteStream(fileInfo.fileName, { size: fileInfo.fileSize });
                     writer = fileStream.getWriter();
                 } else {
                     receivedSize += e.data.byteLength;
                     await writer.write(new Uint8Array(e.data));
-                    document.getElementById('receiveProgressBar').style.width = (receivedSize / fileInfo.fileSize * 100) + '%';
                     
-                    if (receivedSize === fileInfo.fileSize) {
+                    // Update UI smoothly
+                    if (receivedSize % (CHUNK_SIZE * 50) === 0 || receivedSize >= fileInfo.fileSize) {
+                        document.getElementById('receiveProgressBar').style.width = (receivedSize / fileInfo.fileSize * 100) + '%';
+                    }
+                    
+                    // Finish download
+                    if (receivedSize >= fileInfo.fileSize) {
                         writer.close();
                         document.getElementById('receiveStatus').innerText = "✅ Download Finished!";
                     }
@@ -194,13 +241,16 @@
         function setupConnectionListeners(pc, statusId) {
             pc.oniceconnectionstatechange = () => {
                 const state = pc.iceConnectionState;
-                if (state === 'failed' || state === 'disconnected') {
+                if (state === 'connected') {
+                    document.getElementById(statusId).innerText = "🟢 Connected! Transferring...";
+                } else if (state === 'failed' || state === 'disconnected') {
                     document.getElementById(statusId).innerText = "❌ Connection Lost. Try again.";
                 }
             };
         }
 
         function cleanup(code) {
+            // Delete the room from Firebase to save database space
             setTimeout(() => { db.ref('rooms/' + code).remove(); }, 5000);
         }
     </script>
