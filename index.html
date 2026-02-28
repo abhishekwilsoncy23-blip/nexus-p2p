@@ -52,8 +52,8 @@
 
         <div id="sendPanel" class="panel active">
             <select id="networkMode" class="network-select">
-                <option value="internet">🌐 Send via Internet</option>
-                <option value="local">🏠 Send via Local Wi-Fi</option>
+                <option value="internet">🌐 Send via Internet (Works anywhere, may use data)</option>
+                <option value="local">🏠 Send via Local Wi-Fi (Must be on same Wi-Fi, no data used)</option>
             </select>
 
             <label class="upload-btn">
@@ -82,7 +82,7 @@
             <div class="file-counter" id="receiveFileCounter"></div>
             
             <div id="downloadWarning" class="warning-text">
-                Please authorize multiple downloads if prompted.
+                Please authorize multiple downloads if prompted by your browser.
             </div>
         </div>
     </div>
@@ -90,9 +90,8 @@
     <div class="ad-slot">
         <p style="color: #94a3b8; font-size: 12px; margin: 0;">Sponsored Content</p>
     </div>
-
     <script>
-        // 1. FIREBASE CONFIGURATION
+        // 1. FIREBASE CONFIGURATION (REPLACE WITH YOURS)
 const firebaseConfig = {
 
   apiKey: "AIzaSyA-NhlaD3XRLKEf_y6xCMOElXnx5IVWhIg",
@@ -116,7 +115,7 @@ const firebaseConfig = {
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // Default state: Offline
+        // Default state: Offline to save bandwidth limits
         db.goOffline();
 
         let pc, dataChannel;
@@ -152,7 +151,7 @@ const firebaseConfig = {
         }
 
         // ==========================================
-        // SENDER LOGIC (THE ROOM BOSS)
+        // SENDER LOGIC (PURE 90 SECOND TIMER)
         // ==========================================
         async function startSending() {
             if (selectedFiles.length === 0) return alert("Select files first!");
@@ -161,37 +160,35 @@ const firebaseConfig = {
             currentRoomCode = generateCode();
             
             document.getElementById('sendCodeDisplay').innerText = currentRoomCode;
-            document.getElementById('sendStatus').innerText = "Waiting for receiver (Code expires in 90s)...";
+            document.getElementById('sendStatus').innerText = "Waiting for receiver (Room closes in 90s)...";
             document.getElementById('generateBtn').disabled = true;
 
             pc = new RTCPeerConnection(getWebRTCConfig());
             const roomRef = db.ref('rooms/' + currentRoomCode);
 
-            // Safety net: If sender closes tab early, delete room instantly
+            // Safety net: If sender completely closes the tab early
             roomRef.onDisconnect().remove();
 
-            // STRICT 90-SECOND KILL SWITCH
-            const timeoutId = setTimeout(() => {
+            // 🛑 THE UNSTOPPABLE 90-SECOND TIMER
+            // It runs its course no matter what.
+            setTimeout(() => {
+                roomRef.remove(); // Nuke the room
+                db.goOffline();   // Disconnect Firebase
+                
+                // Only update the UI to "Expired" if they never actually connected
                 if (pc.iceConnectionState !== 'connected') {
-                    roomRef.remove(); // Delete room from DB
-                    db.goOffline();   // Disconnect
-                    document.getElementById('sendStatus').innerText = "⏱️ Expired. Code destroyed.";
+                    document.getElementById('sendStatus').innerText = "⏱️ 90s up. Room closed.";
                     document.getElementById('generateBtn').disabled = false;
                     document.getElementById('sendCodeDisplay').innerText = "";
-                    pc.close();
                 }
             }, 90000);
 
             pc.oniceconnectionstatechange = () => {
                 if (pc.iceConnectionState === 'connected') {
-                    clearTimeout(timeoutId);
+                    // DO NOTHING ELSE. Let the 90s timer do its job in the background.
                     document.getElementById('sendStatus').innerText = "🟢 Connected! Transferring...";
-                    // SENDER cleans up the room and leaves Firebase
-                    roomRef.remove().then(() => db.goOffline()); 
                 } else if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
                     document.getElementById('sendStatus').innerText = "❌ Connection Lost.";
-                    roomRef.remove();
-                    db.goOffline();
                 }
             };
 
@@ -257,13 +254,13 @@ const firebaseConfig = {
         }
 
         // ==========================================
-        // RECEIVER LOGIC (READ ONLY, NO DELETING)
+        // RECEIVER LOGIC
         // ==========================================
         async function startReceiving() {
             currentRoomCode = document.getElementById('joinCode').value.toUpperCase();
             if (currentRoomCode.length !== 6) return alert("Enter a valid code");
 
-            db.goOnline(); // Wake up Firebase
+            db.goOnline(); 
             document.getElementById('receiveStatus').innerText = "Connecting...";
 
             pc = new RTCPeerConnection(getWebRTCConfig());
@@ -272,7 +269,7 @@ const firebaseConfig = {
             pc.oniceconnectionstatechange = () => {
                 if (pc.iceConnectionState === 'connected') {
                     document.getElementById('receiveStatus').innerText = "🟢 Connected! Transferring...";
-                    // RECEIVER JUST GOES OFFLINE. NO DELETING ALLOWED.
+                    // Receiver drops Firebase locally once WebRTC is locked in
                     db.goOffline();
                 } else if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
                     document.getElementById('receiveStatus').innerText = "❌ Connection Lost.";
