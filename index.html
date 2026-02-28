@@ -13,6 +13,7 @@
         .container { width: 90%; max-width: 500px; background: var(--card); margin-top: 40px; padding: 30px; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); text-align: center; }
         h1 { margin-top: 0; color: var(--primary); font-size: 26px; margin-bottom: 5px; }
         .subtitle { font-size: 13px; color: #64748b; margin-bottom: 25px; }
+        .version { color: var(--primary); font-weight: bold; background: #e0e7ff; padding: 2px 6px; border-radius: 4px; margin-left: 5px; }
         
         .tab-buttons { display: flex; gap: 10px; margin-bottom: 25px; }
         .tab-btn { flex: 1; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: #e2e8f0; transition: 0.3s; color: #475569; }
@@ -43,7 +44,7 @@
 
     <div class="container">
         <h1>DineShare</h1>
-        <div class="subtitle">Fast & Simple File Transfer</div>
+        <div class="subtitle">Fast & Simple File Transfer <span class="version">v1.1</span></div>
         
         <div class="tab-buttons">
             <button class="tab-btn active" onclick="switchTab('send')">Send</button>
@@ -116,6 +117,7 @@ const firebaseConfig = {
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
+        // Start offline to save connections
         db.goOffline();
 
         let pc, dataChannel;
@@ -160,7 +162,7 @@ const firebaseConfig = {
             currentRoomCode = generateCode();
             
             document.getElementById('sendCodeDisplay').innerText = currentRoomCode;
-            document.getElementById('sendStatus').innerText = "Waiting for receiver (Room closes in 90s)...";
+            document.getElementById('sendStatus').innerText = "Waiting for receiver (Code valid for 60s)...";
             document.getElementById('generateBtn').disabled = true;
 
             pc = new RTCPeerConnection(getWebRTCConfig());
@@ -168,22 +170,16 @@ const firebaseConfig = {
 
             roomRef.onDisconnect().remove();
 
-            let transferStarted = false;
-
-            // 🛑 THE 90 SECOND AUTO-KILL
-            const timeoutId = setTimeout(() => {
-                if (!transferStarted) {
-                    roomRef.remove(); 
-                    db.goOffline();   
-                    document.getElementById('sendStatus').innerText = "⏱️ 90s up. Room closed.";
-                    document.getElementById('generateBtn').disabled = false;
-                    document.getElementById('sendCodeDisplay').innerText = "";
-                    if (pc) pc.close();
-                }
-            }, 90000);
+            // 🛑 BLIND 60-SECOND AUTO-KILL (SENDER)
+            // No matter what happens, drop Firebase in exactly 60 seconds.
+            setTimeout(() => {
+                roomRef.remove().catch(() => {}); // Failsafe silently if already removed
+                db.goOffline();
+                console.log("60s blind timeout reached. Firebase offline.");
+                // We don't change the UI status here because the transfer might be actively happening via WebRTC!
+            }, 60000);
 
             pc.oniceconnectionstatechange = () => {
-                // DO NOT GO OFFLINE HERE. JUST UPDATE UI.
                 if (pc.iceConnectionState === 'connected') {
                     document.getElementById('sendStatus').innerText = "🟢 Connected! Preparing transfer...";
                 } else if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
@@ -194,10 +190,6 @@ const firebaseConfig = {
             dataChannel = pc.createDataChannel("fileTransfer");
             
             dataChannel.onopen = () => {
-                // ✅ TRANSFER ACTUALLY STARTED! NOW WE CLEAN UP FIREBASE.
-                transferStarted = true;
-                clearTimeout(timeoutId);
-                roomRef.remove().then(() => db.goOffline());
                 processFileQueue();
             };
 
@@ -272,19 +264,14 @@ const firebaseConfig = {
             pc = new RTCPeerConnection(getWebRTCConfig());
             const roomRef = db.ref('rooms/' + currentRoomCode);
 
-            let transferStarted = false;
-
-            // 🛑 THE 90 SECOND AUTO-KILL FOR RECEIVER
-            const timeoutId = setTimeout(() => {
-                if (!transferStarted) {
-                    db.goOffline();
-                    document.getElementById('receiveStatus').innerText = "⏱️ 90s up. Connection timed out.";
-                    if (pc) pc.close();
-                }
-            }, 90000);
+            // 🛑 BLIND 60-SECOND AUTO-KILL (RECEIVER)
+            // No matter what happens, drop Firebase in exactly 60 seconds.
+            setTimeout(() => {
+                db.goOffline();
+                console.log("60s blind timeout reached. Firebase offline.");
+            }, 60000);
 
             pc.oniceconnectionstatechange = () => {
-                // DO NOT GO OFFLINE HERE. JUST UPDATE UI.
                 if (pc.iceConnectionState === 'connected') {
                     document.getElementById('receiveStatus').innerText = "🟢 Connected! Waiting for files...";
                 } else if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
@@ -292,7 +279,7 @@ const firebaseConfig = {
                 }
             };
 
-            pc.ondatachannel = (event) => setupReceiveChannel(event.channel, timeoutId, () => { transferStarted = true; });
+            pc.ondatachannel = (event) => setupReceiveChannel(event.channel);
 
             const offerSnap = await roomRef.child('offer').once('value');
             if (!offerSnap.exists()) {
@@ -316,17 +303,13 @@ const firebaseConfig = {
             });
         }
 
-        function setupReceiveChannel(channel, timeoutId, markStarted) {
+        function setupReceiveChannel(channel) {
             let currentFileSize = 0, receivedBytes = 0, fileChunks = [], currentFileName = "", currentFileType = "";
             let firstMessageReceived = false;
 
             channel.onmessage = async (e) => {
-                // ✅ TRANSFER ACTUALLY STARTED! NOW RECEIVER DROPS FIREBASE.
                 if (!firstMessageReceived) {
                     firstMessageReceived = true;
-                    markStarted();
-                    clearTimeout(timeoutId);
-                    db.goOffline();
                     document.getElementById('receiveProgressCont').style.display = 'block';
                     document.getElementById('receiveFileCounter').style.display = 'block';
                 }
