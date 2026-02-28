@@ -1,7 +1,7 @@
 {
   "name": "DineShare",
   "short_name": "DineShare",
-  "start_url": ".",
+  "start_url": "./",
   "display": "standalone",
   "background_color": "#fff7ed",
   "theme_color": "#f97316",
