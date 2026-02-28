@@ -1,4 +1,4 @@
-const cacheName = 'dineshare-v1';
+const cacheName = 'dineshare-v2';
 const assets = ['./', './index.html'];
 
 self.addEventListener('install', e => {
