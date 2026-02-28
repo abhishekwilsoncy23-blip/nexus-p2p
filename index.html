@@ -8,17 +8,15 @@
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
     
     <style>
-        :root { --brand: #f97316; --bg: #fff7ed; --card: #ffffff; --text: #431407; --gray: #94a3b8; --success: #22c55e; --error: #ef4444; }
+        :root { --brand: #f97316; --bg: #fff7ed; --card: #ffffff; --text: #431407; --gray: #94a3b8; --success: #22c55e; }
         * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
         body { background: var(--bg); color: var(--text); margin: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 20px; }
         
-        /* Layout */
         .main-container { width: 100%; max-width: 450px; display: flex; flex-direction: column; gap: 15px; }
         .card { background: var(--card); border-radius: 24px; padding: 30px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); border: 1px solid #ffedd5; }
         
-        /* Ad & Anti-Adblock Section */
-        .ad-slot { width: 100%; min-height: 280px; background: #fff; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px dashed #fdba74; overflow: hidden; position: relative; }
-        #ab-notice { display: none; padding: 20px; text-align: center; }
+        /* Silent Ad Container - Named to bypass ad-filters */
+        .ds-sys-footer-info { width: 100%; min-height: 250px; background: #fff; border-radius: 16px; display: flex; align-items: center; justify-content: center; border: 1px solid #ffedd5; overflow: hidden; }
 
         h1 { color: var(--brand); text-align: center; margin: 0; font-size: 34px; letter-spacing: -1.5px; }
         .tagline { text-align: center; font-size: 13px; color: #9a3412; margin-bottom: 20px; opacity: 0.7; }
@@ -35,7 +33,6 @@
         
         .file-box { border: 2px dashed #fdba74; border-radius: 12px; padding: 30px; text-align: center; margin-bottom: 15px; background: #fffcf9; cursor: pointer; display: block; }
         .code-view { font-size: 48px; font-weight: 900; color: var(--brand); text-align: center; margin: 5px 0; letter-spacing: 5px; font-family: monospace; }
-        .timer-text { text-align: center; font-size: 12px; color: var(--error); font-weight: bold; margin-bottom: 15px; }
         
         .progress-cont { height: 12px; background: #ffedd5; border-radius: 6px; overflow: hidden; margin: 15px 0; display: none; }
         .progress-bar { width: 0%; height: 100%; background: var(--brand); transition: width 0.1s; }
@@ -47,7 +44,7 @@
 <div class="main-container">
     <div class="card">
         <h1>DineShare</h1>
-        <div class="tagline">Ultra-Fast Peer-to-Peer Transfer</div>
+        <div class="tagline">Local P2P File Sharing</div>
 
         <div class="tabs">
             <button class="tab-btn active" id="btn-send" onclick="setMode('send')">Send</button>
@@ -57,12 +54,12 @@
         <div id="sendPanel" class="panel active">
             <label class="file-box">
                 <input type="file" id="filePicker" multiple hidden onchange="filesReady()">
-                <div id="fileStatus">📁 Tap to pick files</div>
+                <div id="fileStatus">📁 Select Files</div>
             </label>
-            <button class="btn" id="genBtn" onclick="initSender()" disabled>Generate 60s Code</button>
+            <button class="btn" id="genBtn" onclick="initSender()" disabled>Generate Code</button>
             <div id="codeArea" style="display:none">
                 <div class="code-view" id="codeDisplay">------</div>
-                <div class="timer-text" id="timer">Code expires in 60s</div>
+                <div style="text-align:center; font-size:12px; color:var(--brand); font-weight:bold;" id="timer">Expires in 60s</div>
             </div>
         </div>
 
@@ -77,30 +74,18 @@
         </div>
     </div>
 
-    <div class="ad-slot" id="ad-wrapper">
-        <div id="ad-placeholder" style="width:100%; text-align:center;">
-            <div style="color:#fdba74; font-size:10px; font-weight:bold; margin-bottom:5px;">ADVERTISEMENT</div>
-            
-            <script type="text/javascript">
-                atOptions = { 'key' : 'YOUR_KEY', 'format' : 'iframe', 'height' : 250, 'width' : 300, 'params' : {} };
-            </script>
-            <script type="text/javascript" src="//www.highperformanceformat.com/YOUR_ID/invoke.js"></script>
-        </div>
-
-        <div id="ab-notice">
-            <div style="font-size:30px;">🎁</div>
-            <div style="font-size:14px; font-weight:bold; color:var(--error);">Adblocker Active</div>
-            <div style="font-size:11px; color:#9a3412; margin-top:4px;">Please disable adblock to keep DineShare free!</div>
-        </div>
+    <div class="ds-sys-footer-info" id="sys-status-node">
+        <script type="text/javascript">
+            atOptions = { 'key' : 'YOUR_KEY', 'format' : 'iframe', 'height' : 250, 'width' : 300, 'params' : {} };
+        </script>
+        <script type="text/javascript" src="//www.highperformanceformat.com/YOUR_ID/invoke.js"></script>
     </div>
     
-    <div style="font-size: 10px; text-align:center; color:#9a3412; opacity:0.5; margin-top:5px;">
-        DineShare v2.4 • High-Scale Connection Optimized
-    </div>
+    <div style="font-size: 10px; text-align:center; color:#9a3412; opacity:0.5;">DineShare v2.5</div>
 </div>
 
 <script>
-    // --- 1. FIREBASE CONFIG ---
+    // --- FIREBASE CONFIG ---
 const firebaseConfig = {
 
   apiKey: "AIzaSyA-NhlaD3XRLKEf_y6xCMOElXnx5IVWhIg",
@@ -127,17 +112,6 @@ const firebaseConfig = {
 
     let pc, dc, files = [], expirationTimer;
 
-    // --- 2. ANTI-ADBLOCK LOGIC ---
-    window.addEventListener('load', () => {
-        setTimeout(() => {
-            const ad = document.getElementById('ad-placeholder');
-            if (ad.offsetHeight < 20) {
-                ad.style.display = 'none';
-                document.getElementById('ab-notice').style.display = 'block';
-            }
-        }, 3500);
-    });
-
     function setMode(mode) {
         document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -151,7 +125,7 @@ const firebaseConfig = {
         document.getElementById('genBtn').disabled = false;
     }
 
-    // --- 3. SENDER CORE ---
+    // --- SENDER CORE ---
     async function initSender() {
         const code = Math.random().toString(36).substring(2, 8).toUpperCase();
         document.getElementById('codeDisplay').innerText = code;
@@ -161,13 +135,11 @@ const firebaseConfig = {
         pc = new RTCPeerConnection(rtcConfig);
         dc = pc.createDataChannel("dineData");
         
-        // P2P Optimization: Go offline from Firebase once connected
         pc.oniceconnectionstatechange = () => {
             if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
                 db.goOffline(); 
                 clearInterval(expirationTimer);
-                document.getElementById('timer').innerText = "DIRECT P2P ENCRYPTED";
-                document.getElementById('timer').style.color = "var(--success)";
+                document.getElementById('timer').innerText = "CONNECTION SECURE";
             }
         };
 
@@ -183,12 +155,11 @@ const firebaseConfig = {
         let timeLeft = 60;
         expirationTimer = setInterval(() => {
             timeLeft--;
-            document.getElementById('timer').innerText = `Code expires in ${timeLeft}s`;
+            document.getElementById('timer').innerText = `Expires in ${timeLeft}s`;
             if (timeLeft <= 0) {
                 clearInterval(expirationTimer);
                 roomRef.remove();
-                document.getElementById('codeDisplay').style.color = "var(--gray)";
-                document.getElementById('currentStatus').innerText = "Code Expired. Refresh page.";
+                document.getElementById('currentStatus').innerText = "Expired. Refresh page.";
             }
         }, 1000);
 
@@ -216,16 +187,16 @@ const firebaseConfig = {
             }
             dc.send("DONE");
         }
-        document.getElementById('currentStatus').innerText = "✅ Files Sent Successfully!";
+        document.getElementById('currentStatus').innerText = "✅ All Sent Successfully";
     }
 
-    // --- 4. RECEIVER CORE ---
+    // --- RECEIVER CORE ---
     async function initReceiver() {
         const code = document.getElementById('joinCode').value.toUpperCase();
         if(!code) return;
         const roomRef = db.ref('dineshare_rooms/' + code);
         const snap = await roomRef.child('offer').once('value');
-        if(!snap.exists()) return alert("Invalid or Expired Code");
+        if(!snap.exists()) return alert("Expired or Invalid Code");
 
         document.getElementById('currentStatus').innerText = "Connecting...";
         pc = new RTCPeerConnection(rtcConfig);
@@ -242,9 +213,12 @@ const firebaseConfig = {
             e.channel.onmessage = msg => {
                 if (typeof msg.data === 'string') {
                     if (msg.data === "DONE") {
+                        // FIX: Logic for completing the download
                         const blob = new Blob(chunks, { type: meta.type });
                         const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = meta.name; a.click();
                         chunks = []; received = 0;
+                        document.getElementById('currentStatus').innerText = "✅ Transfer Complete";
+                        document.getElementById('pBar').style.width = '100%';
                     } else {
                         meta = JSON.parse(msg.data);
                         document.getElementById('currentStatus').innerText = `Receiving: ${meta.name}`;
