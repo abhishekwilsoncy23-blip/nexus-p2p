@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DineShare | P2P Transfer</title>
+    <link rel="icon" href="data:,"> <title>DineShare | P2P Transfer</title>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
     
@@ -44,7 +44,7 @@
 
     <div class="container">
         <h1>DineShare</h1>
-        <div class="subtitle">Fast & Simple File Transfer <span class="version">v1.2</span></div>
+        <div class="subtitle">Fast & Simple File Transfer <span class="version">v1.3</span></div>
         
         <div class="tab-buttons">
             <button class="tab-btn active" onclick="switchTab('send')">Send</button>
@@ -118,13 +118,15 @@ const firebaseConfig = {
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // Start offline to save connections
         db.goOffline();
 
         let pc, dataChannel;
         let selectedFiles = [];
         let currentRoomCode = null; 
         const CHUNK_SIZE = 16384; 
+        
+        // v1.3 FIX: Queues for handling signaling race conditions
+        let iceCandidateQueue = [];
 
         function switchTab(tab) {
             document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
@@ -141,22 +143,16 @@ const firebaseConfig = {
             }
         }
 
-        // v1.2 FIX: Added a free public TURN server to prevent "ICE failed" behind strict NATs
         function getWebRTCConfig() {
             const mode = document.getElementById('networkMode').value;
             
-            if (mode === 'local') {
-                return { iceServers: [] }; // Local Wi-Fi only (no internet needed)
-            }
+            if (mode === 'local') return { iceServers: [] }; 
             
             return { 
                 iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' }, // Google's free STUN
-                    { 
-                        urls: 'turn:relay.metered.ca:80',     // Public TURN server (Metered/OpenRelay)
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    }
+                    { urls: 'stun:stun.l.google.com:19302' }, 
+                    // To support strict NATs/Firewalls, add a private TURN server here later:
+                    // { urls: 'turn:your-turn-server.com:3478', username: 'usr', credential: 'pwd' }
                 ] 
             };
         }
@@ -175,6 +171,7 @@ const firebaseConfig = {
             if (selectedFiles.length === 0) return alert("Select files first!");
 
             db.goOnline(); 
+            iceCandidateQueue = []; // Reset queue
             currentRoomCode = generateCode();
             
             document.getElementById('sendCodeDisplay').innerText = currentRoomCode;
@@ -186,11 +183,9 @@ const firebaseConfig = {
 
             roomRef.onDisconnect().remove();
 
-            // 🛑 BLIND 60-SECOND AUTO-KILL (SENDER)
             setTimeout(() => {
                 roomRef.remove().catch(() => {}); 
                 db.goOffline();
-                console.log("60s blind timeout reached. Firebase offline.");
             }, 60000);
 
             pc.oniceconnectionstatechange = () => {
@@ -202,10 +197,7 @@ const firebaseConfig = {
             };
 
             dataChannel = pc.createDataChannel("fileTransfer");
-            
-            dataChannel.onopen = () => {
-                processFileQueue();
-            };
+            dataChannel.onopen = () => processFileQueue();
 
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
@@ -214,6 +206,10 @@ const firebaseConfig = {
             roomRef.child('answer').on('value', async (snapshot) => {
                 if (snapshot.val() && !pc.currentRemoteDescription) {
                     await pc.setRemoteDescription(new RTCSessionDescription(snapshot.val()));
+                    
+                    // Flush queued candidates now that remote description is set
+                    iceCandidateQueue.forEach(candidate => pc.addIceCandidate(new RTCIceCandidate(candidate)));
+                    iceCandidateQueue = [];
                 }
             });
 
@@ -222,7 +218,13 @@ const firebaseConfig = {
             };
 
             roomRef.child('receiverCandidates').on('child_added', snapshot => {
-                if (snapshot.val()) pc.addIceCandidate(new RTCIceCandidate(snapshot.val()));
+                if (snapshot.val()) {
+                    if (pc.remoteDescription) {
+                        pc.addIceCandidate(new RTCIceCandidate(snapshot.val()));
+                    } else {
+                        iceCandidateQueue.push(snapshot.val()); // Queue it up!
+                    }
+                }
             });
         }
 
@@ -273,15 +275,14 @@ const firebaseConfig = {
             if (currentRoomCode.length !== 6) return alert("Enter a valid code");
 
             db.goOnline(); 
+            iceCandidateQueue = []; // Reset queue
             document.getElementById('receiveStatus').innerText = "Connecting...";
 
             pc = new RTCPeerConnection(getWebRTCConfig());
             const roomRef = db.ref('rooms/' + currentRoomCode);
 
-            // 🛑 BLIND 60-SECOND AUTO-KILL (RECEIVER)
             setTimeout(() => {
                 db.goOffline();
-                console.log("60s blind timeout reached. Firebase offline.");
             }, 60000);
 
             pc.oniceconnectionstatechange = () => {
@@ -301,10 +302,15 @@ const firebaseConfig = {
                 return alert("Transfer code not found or expired.");
             }
 
+            // Set remote description first
             await pc.setRemoteDescription(new RTCSessionDescription(offerSnap.val()));
+            
+            // Now that remote is set, handle any candidates that arrived while we were processing the offer
+            iceCandidateQueue.forEach(candidate => pc.addIceCandidate(new RTCIceCandidate(candidate)));
+            iceCandidateQueue = [];
+
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
-            
             await roomRef.child('answer').set({ type: answer.type, sdp: answer.sdp });
 
             pc.onicecandidate = e => {
@@ -312,7 +318,13 @@ const firebaseConfig = {
             };
 
             roomRef.child('senderCandidates').on('child_added', (snapshot) => {
-                if (snapshot.val()) pc.addIceCandidate(new RTCIceCandidate(snapshot.val()));
+                if (snapshot.val()) {
+                    if (pc.remoteDescription) {
+                        pc.addIceCandidate(new RTCIceCandidate(snapshot.val()));
+                    } else {
+                        iceCandidateQueue.push(snapshot.val()); // Queue it up!
+                    }
+                }
             });
         }
 
