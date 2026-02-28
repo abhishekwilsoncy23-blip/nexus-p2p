@@ -3,7 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DineShare | Secure P2P Transfer</title>
+    <title>DineShare | P2P File Transfer</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#f97316">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2885/2885417.png">
+
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
     
@@ -15,7 +22,6 @@
         .main-container { width: 100%; max-width: 450px; display: flex; flex-direction: column; gap: 15px; }
         .card { background: var(--card); border-radius: 24px; padding: 30px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); border: 1px solid #ffedd5; }
         
-        /* Silent Ad Container - Named to bypass ad-filters */
         .ds-sys-footer-info { width: 100%; min-height: 250px; background: #fff; border-radius: 16px; display: flex; align-items: center; justify-content: center; border: 1px solid #ffedd5; overflow: hidden; }
 
         h1 { color: var(--brand); text-align: center; margin: 0; font-size: 34px; letter-spacing: -1.5px; }
@@ -24,19 +30,24 @@
         .tabs { display: flex; background: #ffedd5; padding: 5px; border-radius: 14px; margin-bottom: 20px; }
         .tab-btn { flex: 1; border: none; padding: 12px; border-radius: 10px; cursor: pointer; font-weight: bold; background: transparent; color: #c2410c; }
         .tab-btn.active { background: white; color: var(--brand); box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
+        .tab-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
         .panel { display: none; }
         .panel.active { display: block; }
 
         .btn { width: 100%; padding: 16px; border: none; border-radius: 12px; background: var(--brand); color: white; font-weight: bold; font-size: 16px; cursor: pointer; transition: 0.2s; }
-        .btn:disabled { background: #fed7aa; cursor: not-allowed; }
+        .btn:disabled { background: #fed7aa; cursor: not-allowed; opacity: 0.7; }
         
         .file-box { border: 2px dashed #fdba74; border-radius: 12px; padding: 30px; text-align: center; margin-bottom: 15px; background: #fffcf9; cursor: pointer; display: block; }
-        .code-view { font-size: 48px; font-weight: 900; color: var(--brand); text-align: center; margin: 5px 0; letter-spacing: 5px; font-family: monospace; }
+        .file-box.locked { opacity: 0.5; pointer-events: none; }
         
+        .code-view { font-size: 48px; font-weight: 900; color: var(--brand); text-align: center; margin: 5px 0; letter-spacing: 5px; font-family: monospace; }
         .progress-cont { height: 12px; background: #ffedd5; border-radius: 6px; overflow: hidden; margin: 15px 0; display: none; }
         .progress-bar { width: 0%; height: 100%; background: var(--brand); transition: width 0.1s; }
         .status-text { text-align: center; font-size: 13px; font-weight: 700; color: #9a3412; padding: 10px; border-radius: 8px; background: #fff7ed; }
+
+        /* PWA Install Toast */
+        #pwa-toast { position: fixed; bottom: 20px; background: #431407; color: white; padding: 12px 20px; border-radius: 50px; display: none; align-items: center; gap: 10px; font-size: 14px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); cursor: pointer; z-index: 1000; }
     </style>
 </head>
 <body>
@@ -44,17 +55,17 @@
 <div class="main-container">
     <div class="card">
         <h1>DineShare</h1>
-        <div class="tagline">Local P2P File Sharing</div>
+        <div class="tagline">Secure P2P File Sharing</div>
 
         <div class="tabs">
-            <button class="tab-btn active" id="btn-send" onclick="setMode('send')">Send</button>
-            <button class="tab-btn" id="btn-receive" onclick="setMode('receive')">Receive</button>
+            <button class="tab-btn active" id="btn-send-tab" onclick="setMode('send')">Send</button>
+            <button class="tab-btn" id="btn-receive-tab" onclick="setMode('receive')">Receive</button>
         </div>
 
         <div id="sendPanel" class="panel active">
-            <label class="file-box">
+            <label class="file-box" id="file-drop-zone">
                 <input type="file" id="filePicker" multiple hidden onchange="filesReady()">
-                <div id="fileStatus">📁 Select Files</div>
+                <div id="fileStatus">📁 Select Files First</div>
             </label>
             <button class="btn" id="genBtn" onclick="initSender()" disabled>Generate Code</button>
             <div id="codeArea" style="display:none">
@@ -65,7 +76,7 @@
 
         <div id="receivePanel" class="panel">
             <input type="text" id="joinCode" placeholder="ENTER CODE" maxlength="6" style="width:100%; padding:16px; border-radius:12px; border:2px solid #fdba74; font-size:24px; text-align:center; font-weight:bold; margin-bottom:15px; text-transform:uppercase; outline: none;">
-            <button class="btn" onclick="initReceiver()">Join & Download</button>
+            <button class="btn" id="joinBtn" onclick="initReceiver()">Join & Download</button>
         </div>
 
         <div id="transferInfo" style="margin-top:20px;">
@@ -80,74 +91,91 @@
         </script>
         <script type="text/javascript" src="//www.highperformanceformat.com/YOUR_ID/invoke.js"></script>
     </div>
-    
-    <div style="font-size: 10px; text-align:center; color:#9a3412; opacity:0.5;">DineShare v2.5</div>
+</div>
+
+<div id="pwa-toast" onclick="installPWA()">
+    <span>📲 Add DineShare to Home Screen</span>
 </div>
 
 <script>
     // --- FIREBASE CONFIG ---
-const firebaseConfig = {
-
-  apiKey: "AIzaSyA-NhlaD3XRLKEf_y6xCMOElXnx5IVWhIg",
-
-  authDomain: "dineshare-web.firebaseapp.com",
-
-  databaseURL: "https://dineshare-web-default-rtdb.firebaseio.com",
-
-  projectId: "dineshare-web",
-
-  storageBucket: "dineshare-web.firebasestorage.app",
-
-  messagingSenderId: "456148087993",
-
-  appId: "1:456148087993:web:041e5569a4722b64795768",
-
-  measurementId: "G-633V93EBW6"
-
-};
-
+    const firebaseConfig = {
+        apiKey: "YOUR_API_KEY",
+        authDomain: "YOUR_PROJECT.firebaseapp.com",
+        databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
+        projectId: "YOUR_PROJECT_ID",
+        storageBucket: "YOUR_PROJECT.appspot.com",
+        messagingSenderId: "YOUR_ID",
+        appId: "YOUR_APP_ID"
+    };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-    let pc, dc, files = [], expirationTimer;
+    let pc, dc, files = [], expirationTimer, deferredPrompt;
 
+    // --- PWA REGISTRATION & INSTALL LOGIC ---
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js');
+    }
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        document.getElementById('pwa-toast').style.display = 'flex';
+    });
+
+    async function installPWA() {
+        if (deferredPrompt) {
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            if (outcome === 'accepted') document.getElementById('pwa-toast').style.display = 'none';
+            deferredPrompt = null;
+        }
+    }
+
+    // --- UI LOGIC ---
     function setMode(mode) {
         document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         document.getElementById(mode + 'Panel').classList.add('active');
-        document.getElementById('btn-' + mode).classList.add('active');
+        document.getElementById('btn-' + mode + '-tab').classList.add('active');
     }
 
     function filesReady() {
         files = Array.from(document.getElementById('filePicker').files);
-        document.getElementById('fileStatus').innerHTML = `<b>${files.length} Files Ready</b>`;
-        document.getElementById('genBtn').disabled = false;
+        if(files.length > 0) {
+            document.getElementById('fileStatus').innerHTML = `<b>${files.length} Files Ready</b>`;
+            document.getElementById('genBtn').disabled = false;
+        }
     }
 
-    // --- SENDER CORE ---
+    function lockUI() {
+        document.querySelectorAll('.btn, .tab-btn, input').forEach(el => el.disabled = true);
+        document.getElementById('file-drop-zone').classList.add('locked');
+    }
+
+    // --- SENDER ---
     async function initSender() {
+        lockUI();
         const code = Math.random().toString(36).substring(2, 8).toUpperCase();
         document.getElementById('codeDisplay').innerText = code;
         document.getElementById('codeArea').style.display = 'block';
-        document.getElementById('genBtn').style.display = 'none';
 
         pc = new RTCPeerConnection(rtcConfig);
         dc = pc.createDataChannel("dineData");
         
         pc.oniceconnectionstatechange = () => {
             if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
-                db.goOffline(); 
+                db.goOffline();
                 clearInterval(expirationTimer);
-                document.getElementById('timer').innerText = "CONNECTION SECURE";
+                document.getElementById('timer').innerText = "DIRECT P2P ENCRYPTED";
             }
         };
 
         dc.onopen = () => transferData();
 
         const roomRef = db.ref('dineshare_rooms/' + code);
-        roomRef.onDisconnect().remove(); 
-
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         await roomRef.set({ offer: { sdp: offer.sdp, type: offer.type } });
@@ -159,7 +187,7 @@ const firebaseConfig = {
             if (timeLeft <= 0) {
                 clearInterval(expirationTimer);
                 roomRef.remove();
-                document.getElementById('currentStatus').innerText = "Expired. Refresh page.";
+                document.getElementById('currentStatus').innerText = "Expired. Refresh to start over.";
             }
         }, 1000);
 
@@ -187,25 +215,21 @@ const firebaseConfig = {
             }
             dc.send("DONE");
         }
-        document.getElementById('currentStatus').innerText = "✅ All Sent Successfully";
+        document.getElementById('currentStatus').innerText = "✅ Files Sent!";
     }
 
-    // --- RECEIVER CORE ---
+    // --- RECEIVER ---
     async function initReceiver() {
         const code = document.getElementById('joinCode').value.toUpperCase();
         if(!code) return;
         const roomRef = db.ref('dineshare_rooms/' + code);
         const snap = await roomRef.child('offer').once('value');
-        if(!snap.exists()) return alert("Expired or Invalid Code");
+        if(!snap.exists()) return alert("Code Expired or Invalid");
 
+        lockUI();
         document.getElementById('currentStatus').innerText = "Connecting...";
         pc = new RTCPeerConnection(rtcConfig);
-        
-        pc.oniceconnectionstatechange = () => {
-            if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
-                db.goOffline(); 
-            }
-        };
+        pc.oniceconnectionstatechange = () => { if (pc.iceConnectionState === "connected") db.goOffline(); };
 
         pc.ondatachannel = e => {
             let meta, chunks = [], received = 0;
@@ -213,12 +237,10 @@ const firebaseConfig = {
             e.channel.onmessage = msg => {
                 if (typeof msg.data === 'string') {
                     if (msg.data === "DONE") {
-                        // FIX: Logic for completing the download
                         const blob = new Blob(chunks, { type: meta.type });
                         const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = meta.name; a.click();
                         chunks = []; received = 0;
-                        document.getElementById('currentStatus').innerText = "✅ Transfer Complete";
-                        document.getElementById('pBar').style.width = '100%';
+                        document.getElementById('currentStatus').innerText = "✅ Download Complete";
                     } else {
                         meta = JSON.parse(msg.data);
                         document.getElementById('currentStatus').innerText = `Receiving: ${meta.name}`;
