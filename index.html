@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DineShare | P2P Transfer Pro</title>
+    <title>DineShare | P2P Transfer</title>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
     
@@ -12,26 +12,27 @@
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); margin: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; color: #1e293b; }
         .container { width: 90%; max-width: 500px; background: var(--card); margin-top: 40px; padding: 30px; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); text-align: center; }
         h1 { margin-top: 0; color: var(--primary); font-size: 26px; margin-bottom: 5px; }
-        .subtitle { font-size: 13px; color: #64748b; margin-bottom: 20px; }
+        .subtitle { font-size: 13px; color: #64748b; margin-bottom: 25px; }
         
-        .tab-buttons { display: flex; gap: 10px; margin-bottom: 20px; }
+        .tab-buttons { display: flex; gap: 10px; margin-bottom: 25px; }
         .tab-btn { flex: 1; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: #e2e8f0; transition: 0.3s; color: #475569; }
         .tab-btn.active { background: var(--primary); color: white; }
         .panel { display: none; }
         .panel.active { display: block; }
         
-        .upload-row { display: flex; gap: 10px; margin: 15px 0; }
-        .upload-btn { flex: 1; padding: 12px; background: #f1f5f9; border: 2px dashed #cbd5e1; border-radius: 8px; cursor: pointer; font-weight: 500; font-size: 14px; transition: 0.2s; }
+        .network-select { width: 100%; padding: 12px; margin-bottom: 20px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 14px; background: #f8fafc; cursor: pointer; color: #1e293b; font-weight: 500;}
+        
+        .upload-btn { display: block; width: 100%; padding: 15px; background: #f1f5f9; border: 2px dashed #cbd5e1; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 16px; transition: 0.2s; box-sizing: border-box; margin-bottom: 15px; }
         .upload-btn:hover { border-color: var(--primary); color: var(--primary); }
         
-        select, input[type="text"] { width: 100%; padding: 12px; margin: 10px 0 15px 0; border: 2px solid #e2e8f0; border-radius: 8px; box-sizing: border-box; font-size: 15px; }
-        button.action-btn { width: 100%; padding: 15px; border: none; border-radius: 8px; background: var(--primary); color: white; font-size: 16px; font-weight: bold; cursor: pointer; }
+        input[type="text"] { width: 100%; padding: 15px; margin: 10px 0 20px 0; border: 2px solid #e2e8f0; border-radius: 8px; box-sizing: border-box; font-size: 16px; text-align: center; letter-spacing: 2px; }
+        button.action-btn { width: 100%; padding: 15px; border: none; border-radius: 8px; background: var(--primary); color: white; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
         button.action-btn:disabled { background: #94a3b8; cursor: not-allowed; }
         
-        .status { margin-top: 15px; font-size: 14px; color: #64748b; min-height: 20px; font-weight: 500; }
-        .progress-cont { width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; margin-top: 10px; overflow: hidden; display: none; }
+        .status { margin-top: 20px; font-size: 15px; color: #64748b; min-height: 20px; font-weight: 500; }
+        .progress-cont { width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; margin-top: 15px; overflow: hidden; display: none; }
         .progress-bar { width: 0%; height: 100%; background: var(--primary); transition: width 0.1s; }
-        .file-counter { font-size: 12px; color: #64748b; margin-top: 5px; display: none; }
+        .file-counter { font-size: 13px; color: #64748b; margin-top: 8px; display: none; font-weight: 600; }
         
         .ad-slot { margin-top: 30px; width: 100%; max-width: 500px; min-height: 100px; background: #f1f5f9; border-radius: 8px; display: flex; align-items: center; justify-content: center; border: 1px dashed #cbd5e1; flex-direction: column; }
     </style>
@@ -40,7 +41,7 @@
 
     <div class="container">
         <h1>DineShare</h1>
-        <div class="subtitle">Secure P2P File Transfer</div>
+        <div class="subtitle">Fast & Simple File Transfer</div>
         
         <div class="tab-buttons">
             <button class="tab-btn active" onclick="switchTab('send')">Send</button>
@@ -48,38 +49,32 @@
         </div>
 
         <div id="sendPanel" class="panel active">
-            <div style="text-align: left; font-size: 13px; font-weight: 600; color: #475569;">Network Routing:</div>
-            <select id="networkMode">
-                <option value="internet">🌐 Internet (STUN Enabled)</option>
-                <option value="local">🏠 Strict Local Wi-Fi (No Internet)</option>
+            
+            <select id="networkMode" class="network-select">
+                <option value="internet">🌐 Send via Internet (Works anywhere, may use data)</option>
+                <option value="local">🏠 Send via Local Wi-Fi (Must be on same Wi-Fi, no data used)</option>
             </select>
 
-            <div class="upload-row">
-                <label class="upload-btn">
-                    📄 Select Files
-                    <input type="file" id="fileInput" multiple hidden onchange="handleFileSelect(this)">
-                </label>
-                <label class="upload-btn">
-                    📁 Select Folder
-                    <input type="file" id="folderInput" webkitdirectory directory multiple hidden onchange="handleFileSelect(this)">
-                </label>
-            </div>
+            <label class="upload-btn">
+                📄 Select Files to Send
+                <input type="file" id="fileInput" multiple hidden onchange="handleFileSelect(this)">
+            </label>
             
-            <div id="selectionDisplay" style="margin-bottom: 15px; font-size: 14px; font-weight: bold; color: var(--primary);">0 files selected</div>
+            <div id="selectionDisplay" style="margin-bottom: 20px; font-size: 15px; font-weight: bold; color: var(--primary);">0 files selected</div>
             
-            <button class="action-btn" id="generateBtn" onclick="startSending()" disabled>Generate Transfer Code</button>
-            <div id="sendCodeDisplay" style="font-size: 36px; font-weight: bold; margin-top: 20px; letter-spacing: 6px; color: #1e293b;"></div>
+            <button class="action-btn" id="generateBtn" onclick="startSending()" disabled>Get Transfer Code</button>
+            <div id="sendCodeDisplay" style="font-size: 40px; font-weight: bold; margin-top: 25px; letter-spacing: 8px; color: #1e293b;"></div>
             
-            <div id="sendStatus" class="status">Select files or a folder to begin</div>
+            <div id="sendStatus" class="status">Select files to begin</div>
             <div class="progress-cont" id="sendProgressCont"><div class="progress-bar" id="sendProgressBar"></div></div>
             <div class="file-counter" id="sendFileCounter"></div>
         </div>
 
         <div id="receivePanel" class="panel">
-            <div style="text-align: left; font-size: 13px; font-weight: 600; color: #475569; margin-top: 10px;">Enter Alphanumeric Code:</div>
+            <div style="text-align: left; font-size: 14px; font-weight: 600; color: #475569; margin-top: 10px;">Enter 6-Character Code:</div>
             <input type="text" id="joinCode" placeholder="e.g. A7K9X2" maxlength="6" style="text-transform: uppercase;">
             
-            <button class="action-btn" onclick="startReceiving()">Connect & Choose Save Folder</button>
+            <button class="action-btn" onclick="startReceiving()">Connect & Choose Save Location</button>
             
             <div id="receiveStatus" class="status">Waiting for code...</div>
             <div class="progress-cont" id="receiveProgressCont"><div class="progress-bar" id="receiveProgressBar"></div></div>
@@ -90,18 +85,30 @@
     <div class="ad-slot">
         <p style="color: #94a3b8; font-size: 12px; margin: 0;">Sponsored Content</p>
     </div>
-
     <script>
         // 1. FIREBASE CONFIGURATION (REPLACE WITH YOURS)
-        const firebaseConfig = {
-            apiKey: "YOUR_API_KEY",
-            authDomain: "YOUR_PROJECT.firebaseapp.com",
-            databaseURL: "https://YOUR_PROJECT-default-rtdb.firebaseio.com",
-            projectId: "YOUR_PROJECT_ID",
-            storageBucket: "YOUR_PROJECT.appspot.com",
-            messagingSenderId: "YOUR_ID",
-            appId: "YOUR_APP_ID"
-        };
+
+const firebaseConfig = {
+
+  apiKey: "AIzaSyA-NhlaD3XRLKEf_y6xCMOElXnx5IVWhIg",
+
+  authDomain: "dineshare-web.firebaseapp.com",
+
+  databaseURL: "https://dineshare-web-default-rtdb.firebaseio.com",
+
+  projectId: "dineshare-web",
+
+  storageBucket: "dineshare-web.firebasestorage.app",
+
+  messagingSenderId: "456148087993",
+
+  appId: "1:456148087993:web:041e5569a4722b64795768",
+
+  measurementId: "G-633V93EBW6"
+
+};
+
+        
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
@@ -127,13 +134,15 @@
             }
         }
 
+        // Hides network complexity from user. 
+        // If local, give WebRTC no external servers. If internet, give it Google's server.
         function getWebRTCConfig() {
             const mode = document.getElementById('networkMode').value;
             return mode === 'local' ? { iceServers: [] } : { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
         }
 
         function generateCode() {
-            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excluded I, O, 1, 0 for clarity
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No I, O, 1, 0 for easy reading
             let result = '';
             for (let i = 0; i < 6; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
             return result;
@@ -146,6 +155,8 @@
             const code = generateCode();
             document.getElementById('sendCodeDisplay').innerText = code;
             document.getElementById('sendStatus').innerText = "Waiting for receiver...";
+            document.getElementById('generateBtn').disabled = true;
+            document.getElementById('networkMode').disabled = true;
 
             pc = new RTCPeerConnection(getWebRTCConfig());
             setupConnectionListeners(pc, 'sendStatus');
@@ -180,25 +191,22 @@
             const counterLabel = document.getElementById('sendFileCounter');
             counterLabel.style.display = 'block';
             
-            dataChannel.bufferedAmountLowThreshold = 1024 * 1024; // 1MB buffer
+            dataChannel.bufferedAmountLowThreshold = 1024 * 1024; // 1MB buffer to prevent crashing
 
             for (let i = 0; i < selectedFiles.length; i++) {
                 const file = selectedFiles[i];
-                // webkitRelativePath contains the folder structure if a folder was selected
-                const path = file.webkitRelativePath || file.name; 
                 
                 counterLabel.innerText = `Sending file ${i + 1} of ${selectedFiles.length}`;
                 document.getElementById('sendStatus').innerText = `Sending: ${file.name}`;
 
-                // Send Metadata Header
+                // Tell receiver what file is coming
                 dataChannel.send(JSON.stringify({ 
                     type: 'header', 
-                    fileName: path, 
+                    fileName: file.name, 
                     fileSize: file.size,
                     isLastFile: i === selectedFiles.length - 1
                 }));
 
-                // Read and Send Chunks
                 let offset = 0;
                 const readSlice = o => new Promise(resolve => {
                     const reader = new FileReader();
@@ -209,6 +217,7 @@
                 while (offset < file.size) {
                     const chunk = await readSlice(offset);
                     
+                    // Wait if buffer gets too full
                     if (dataChannel.bufferedAmount > dataChannel.bufferedAmountLowThreshold) {
                         await new Promise(resolve => {
                             dataChannel.onbufferedamountlow = () => {
@@ -226,7 +235,7 @@
                     }
                 }
                 
-                // Signal end of current file
+                // Tell receiver this file is done
                 dataChannel.send(JSON.stringify({ type: 'eof' }));
             }
             
@@ -237,14 +246,14 @@
         // 5. RECEIVER LOGIC
         async function startReceiving() {
             if (!window.showDirectoryPicker) {
-                return alert("Your browser doesn't support silent folder writing. Please use Chrome, Edge, or Brave on Desktop.");
+                return alert("Your browser doesn't support silent saving. Please use Chrome, Edge, or Brave on Desktop.");
             }
 
             const code = document.getElementById('joinCode').value.toUpperCase();
             if (code.length !== 6) return alert("Enter a valid 6-character code");
 
             try {
-                // Ask user where to save files BEFORE connecting
+                // Ask user ONE TIME where to save everything
                 rootDirectoryHandle = await window.showDirectoryPicker();
             } catch (err) {
                 return alert("You must select a folder to save the incoming files.");
@@ -261,7 +270,7 @@
             const snapshot = await roomRef.once('value');
             const data = snapshot.val();
 
-            if (!data) return alert("Room not found!");
+            if (!data) return alert("Transfer code not found or expired.");
 
             await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
             const answer = await pc.createAnswer();
@@ -290,25 +299,16 @@
                     const msg = JSON.parse(e.data);
                     
                     if (msg.type === 'header') {
-                        document.getElementById('receiveStatus').innerText = `Writing: ${msg.fileName}`;
+                        document.getElementById('receiveStatus').innerText = `Receiving: ${msg.fileName}`;
                         currentFileSize = msg.fileSize;
                         receivedBytes = 0;
 
-                        // Recreate folder structure if it exists in the path
-                        const pathParts = msg.fileName.split('/');
-                        const fileName = pathParts.pop(); // Remove file name, keep folders
-                        let currentDirHandle = rootDirectoryHandle;
-
-                        for (const folder of pathParts) {
-                            currentDirHandle = await currentDirHandle.getDirectoryHandle(folder, { create: true });
-                        }
-
-                        // Create file and open writable stream
-                        const fileHandle = await currentDirHandle.getFileHandle(fileName, { create: true });
+                        // Create the file in the folder the user selected earlier
+                        const fileHandle = await rootDirectoryHandle.getFileHandle(msg.fileName, { create: true });
                         activeWriter = await fileHandle.createWritable();
                     } 
                     else if (msg.type === 'eof') {
-                        // File complete
+                        // File finished writing
                         await activeWriter.close();
                         activeWriter = null;
                         if (msg.isLastFile) {
@@ -316,12 +316,11 @@
                         }
                     }
                 } else {
-                    // Binary chunk
+                    // Save actual file data
                     if (activeWriter) {
                         receivedBytes += e.data.byteLength;
                         await activeWriter.write(e.data);
                         
-                        // Update UI
                         if (receivedBytes % (CHUNK_SIZE * 50) === 0 || receivedBytes >= currentFileSize) {
                             document.getElementById('receiveProgressBar').style.width = (receivedBytes / currentFileSize * 100) + '%';
                         }
@@ -343,6 +342,7 @@
         }
 
         function cleanup(code) {
+            // Delete room to keep database clean
             setTimeout(() => { db.ref('rooms/' + code).remove(); }, 5000);
         }
     </script>
