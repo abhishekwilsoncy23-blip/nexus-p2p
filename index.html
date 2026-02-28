@@ -3,97 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="icon" href="data:,"> <title>DineShare | P2P Transfer</title>
+    <title>DineShare | Local P2P</title>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
-    
     <style>
-        :root { --primary: #6366f1; --bg: #f8fafc; --card: #ffffff; }
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); margin: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; color: #1e293b; }
-        .container { width: 90%; max-width: 500px; background: var(--card); margin-top: 40px; padding: 30px; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); text-align: center; }
-        h1 { margin-top: 0; color: var(--primary); font-size: 26px; margin-bottom: 5px; }
-        .subtitle { font-size: 13px; color: #64748b; margin-bottom: 25px; }
-        .version { color: var(--primary); font-weight: bold; background: #e0e7ff; padding: 2px 6px; border-radius: 4px; margin-left: 5px; }
-        
-        .tab-buttons { display: flex; gap: 10px; margin-bottom: 25px; }
-        .tab-btn { flex: 1; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; background: #e2e8f0; transition: 0.3s; color: #475569; }
-        .tab-btn.active { background: var(--primary); color: white; }
-        .panel { display: none; }
-        .panel.active { display: block; }
-        
-        .network-select { width: 100%; padding: 12px; margin-bottom: 20px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 14px; background: #f8fafc; cursor: pointer; color: #1e293b; font-weight: 500;}
-        
-        .upload-btn { display: block; width: 100%; padding: 15px; background: #f1f5f9; border: 2px dashed #cbd5e1; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 16px; transition: 0.2s; box-sizing: border-box; margin-bottom: 15px; }
-        .upload-btn:hover { border-color: var(--primary); color: var(--primary); }
-        
-        input[type="text"] { width: 100%; padding: 15px; margin: 10px 0 20px 0; border: 2px solid #e2e8f0; border-radius: 8px; box-sizing: border-box; font-size: 16px; text-align: center; letter-spacing: 2px; }
-        button.action-btn { width: 100%; padding: 15px; border: none; border-radius: 8px; background: var(--primary); color: white; font-size: 16px; font-weight: bold; cursor: pointer; transition: 0.2s; }
-        button.action-btn:disabled { background: #94a3b8; cursor: not-allowed; }
-        
-        .status { margin-top: 20px; font-size: 15px; color: #64748b; min-height: 20px; font-weight: 500; }
-        .progress-cont { width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; margin-top: 15px; overflow: hidden; display: none; }
+        :root { --primary: #10b981; --bg: #f0fdf4; }
+        body { font-family: sans-serif; background: var(--bg); display: flex; justify-content: center; padding: 20px; }
+        .card { background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); width: 100%; max-width: 400px; text-align: center; }
+        input, button { width: 100%; padding: 12px; margin: 10px 0; border-radius: 6px; border: 1px solid #ddd; box-sizing: border-box; }
+        button { background: var(--primary); color: white; border: none; font-weight: bold; cursor: pointer; }
+        .progress-cont { height: 10px; background: #eee; border-radius: 5px; overflow: hidden; display: none; margin: 10px 0; }
         .progress-bar { width: 0%; height: 100%; background: var(--primary); transition: width 0.1s; }
-        .file-counter { font-size: 13px; color: #64748b; margin-top: 8px; display: none; font-weight: 600; }
-        
-        .warning-text { font-size: 12px; color: #d97706; margin-top: 12px; display: none; font-weight: 600; background: #fef3c7; padding: 10px; border-radius: 6px; }
-
-        .ad-slot { margin-top: 30px; width: 100%; max-width: 500px; min-height: 100px; background: #f1f5f9; border-radius: 8px; display: flex; align-items: center; justify-content: center; border: 1px dashed #cbd5e1; flex-direction: column; }
+        .status { font-size: 14px; color: #666; margin-top: 10px; }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        <h1>DineShare</h1>
-        <div class="subtitle">Fast & Simple File Transfer <span class="version">v1.3</span></div>
-        
-        <div class="tab-buttons">
-            <button class="tab-btn active" onclick="switchTab('send')">Send</button>
-            <button class="tab-btn" onclick="switchTab('receive')">Receive</button>
-        </div>
-
-        <div id="sendPanel" class="panel active">
-            <select id="networkMode" class="network-select">
-                <option value="internet">🌐 Send via Internet</option>
-                <option value="local">🏠 Send via Local Wi-Fi</option>
-            </select>
-
-            <label class="upload-btn">
-                📄 Select Files to Send
-                <input type="file" id="fileInput" multiple hidden onchange="handleFileSelect(this)">
-            </label>
-            
-            <div id="selectionDisplay" style="margin-bottom: 20px; font-size: 15px; font-weight: bold; color: var(--primary);">0 files selected</div>
-            
-            <button class="action-btn" id="generateBtn" onclick="startSending()" disabled>Get Transfer Code</button>
-            <div id="sendCodeDisplay" style="font-size: 40px; font-weight: bold; margin-top: 25px; letter-spacing: 8px; color: #1e293b;"></div>
-            
-            <div id="sendStatus" class="status">Select files to begin</div>
-            <div class="progress-cont" id="sendProgressCont"><div class="progress-bar" id="sendProgressBar"></div></div>
-            <div class="file-counter" id="sendFileCounter"></div>
-        </div>
-
-        <div id="receivePanel" class="panel">
-            <div style="text-align: left; font-size: 14px; font-weight: 600; color: #475569; margin-top: 10px;">Enter 6-Character Code:</div>
-            <input type="text" id="joinCode" placeholder="e.g. A7K9X2" maxlength="6" style="text-transform: uppercase;">
-            
-            <button class="action-btn" onclick="startReceiving()">Connect & Download</button>
-            
-            <div id="receiveStatus" class="status">Waiting for code...</div>
-            <div class="progress-cont" id="receiveProgressCont"><div class="progress-bar" id="receiveProgressBar"></div></div>
-            <div class="file-counter" id="receiveFileCounter"></div>
-            
-            <div id="downloadWarning" class="warning-text">
-                Please authorize multiple downloads if prompted.
-            </div>
-        </div>
+<div class="card">
+    <h2 style="color:var(--primary)">DineShare Local</h2>
+    <p style="font-size:12px; color:#666;">Devices must be on the same Wi-Fi</p>
+    
+    <div id="setupView">
+        <input type="file" id="fileInput" multiple onchange="document.getElementById('sendBtn').disabled = false">
+        <button id="sendBtn" onclick="startSender()" disabled>Generate Code</button>
+        <div id="displayCode" style="font-size:32px; font-weight:bold; margin: 15px 0;"></div>
+        <hr>
+        <input type="text" id="inputCode" placeholder="Enter 6-digit code" maxlength="6">
+        <button onclick="startReceiver()">Receive Files</button>
     </div>
 
-    <div class="ad-slot">
-        <p style="color: #94a3b8; font-size: 12px; margin: 0;">Sponsored Content</p>
+    <div id="transferView">
+        <div id="statusText" class="status">Ready</div>
+        <div class="progress-cont" id="pCont"><div class="progress-bar" id="pBar"></div></div>
     </div>
+</div>
 
-    <script>
-        // 1. FIREBASE CONFIGURATION
+<script>
+    // --- CONFIGURATION ---
 const firebaseConfig = {
 
   apiKey: "AIzaSyA-NhlaD3XRLKEf_y6xCMOElXnx5IVWhIg",
@@ -115,260 +61,94 @@ const firebaseConfig = {
 };
 
 
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.database();
 
-        db.goOffline();
+    
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    const iceConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+    
+    let pc, dc, files = [];
 
-        let pc, dataChannel;
-        let selectedFiles = [];
-        let currentRoomCode = null; 
-        const CHUNK_SIZE = 16384; 
+    // --- SENDER ---
+    async function startSender() {
+        files = Array.from(document.getElementById('fileInput').files);
+        const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+        document.getElementById('displayCode').innerText = code;
+        document.getElementById('statusText').innerText = "Waiting for receiver...";
+
+        pc = new RTCPeerConnection(iceConfig);
+        dc = pc.createDataChannel("transfer");
+        dc.onopen = () => sendAllFiles();
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
         
-        // v1.3 FIX: Queues for handling signaling race conditions
-        let iceCandidateQueue = [];
+        const roomRef = db.ref('local_rooms/' + code);
+        roomRef.set({ offer: { sdp: offer.sdp, type: offer.type } });
+        roomRef.child('answer').on('value', snap => snap.val() && pc.setRemoteDescription(new RTCSessionDescription(snap.val())));
+        pc.onicecandidate = e => e.candidate && roomRef.child('sCand').push(e.candidate.toJSON());
+        roomRef.child('rCand').on('child_added', snap => pc.addIceCandidate(new RTCIceCandidate(snap.val())));
+    }
 
-        function switchTab(tab) {
-            document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            document.getElementById(tab + 'Panel').classList.add('active');
-            event.target.classList.add('active');
-        }
-
-        function handleFileSelect(inputElement) {
-            if (inputElement.files.length > 0) {
-                selectedFiles = Array.from(inputElement.files);
-                document.getElementById('selectionDisplay').innerText = `${selectedFiles.length} file(s) ready to send`;
-                document.getElementById('generateBtn').disabled = false;
+    async function sendAllFiles() {
+        document.getElementById('pCont').style.display = 'block';
+        for (let file of files) {
+            document.getElementById('statusText').innerText = `Sending: ${file.name}`;
+            dc.send(JSON.stringify({ name: file.name, size: file.size, type: file.type }));
+            
+            let offset = 0;
+            const chunk = 16384;
+            while (offset < file.size) {
+                if (dc.bufferedAmount > 1000000) await new Promise(r => setTimeout(r, 50));
+                const data = await file.slice(offset, offset + chunk).arrayBuffer();
+                dc.send(data);
+                offset += data.byteLength;
+                document.getElementById('pBar').style.width = (offset / file.size * 100) + '%';
             }
+            dc.send("EOF");
         }
+        document.getElementById('statusText').innerText = "Done!";
+    }
 
-        function getWebRTCConfig() {
-            const mode = document.getElementById('networkMode').value;
-            
-            if (mode === 'local') return { iceServers: [] }; 
-            
-            return { 
-                iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' }, 
-                    // To support strict NATs/Firewalls, add a private TURN server here later:
-                    // { urls: 'turn:your-turn-server.com:3478', username: 'usr', credential: 'pwd' }
-                ] 
-            };
-        }
+    // --- RECEIVER ---
+    async function startReceiver() {
+        const code = document.getElementById('inputCode').value.toUpperCase();
+        const roomRef = db.ref('local_rooms/' + code);
+        const snap = await roomRef.child('offer').once('value');
+        if (!snap.exists()) return alert("Code not found");
 
-        function generateCode() {
-            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-            let result = '';
-            for (let i = 0; i < 6; i++) result += chars.charAt(Math.floor(Math.random() * chars.length));
-            return result;
-        }
+        pc = new RTCPeerConnection(iceConfig);
+        pc.ondatachannel = e => setupDC(e.channel);
+        
+        await pc.setRemoteDescription(new RTCSessionDescription(snap.val()));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        roomRef.child('answer').set({ sdp: answer.sdp, type: answer.type });
 
-        // ==========================================
-        // SENDER LOGIC
-        // ==========================================
-        async function startSending() {
-            if (selectedFiles.length === 0) return alert("Select files first!");
+        pc.onicecandidate = e => e.candidate && roomRef.child('rCand').push(e.candidate.toJSON());
+        roomRef.child('sCand').on('child_added', snap => pc.addIceCandidate(new RTCIceCandidate(snap.val())));
+    }
 
-            db.goOnline(); 
-            iceCandidateQueue = []; // Reset queue
-            currentRoomCode = generateCode();
-            
-            document.getElementById('sendCodeDisplay').innerText = currentRoomCode;
-            document.getElementById('sendStatus').innerText = "Waiting for receiver (Code valid for 60s)...";
-            document.getElementById('generateBtn').disabled = true;
-
-            pc = new RTCPeerConnection(getWebRTCConfig());
-            const roomRef = db.ref('rooms/' + currentRoomCode);
-
-            roomRef.onDisconnect().remove();
-
-            setTimeout(() => {
-                roomRef.remove().catch(() => {}); 
-                db.goOffline();
-            }, 60000);
-
-            pc.oniceconnectionstatechange = () => {
-                if (pc.iceConnectionState === 'connected') {
-                    document.getElementById('sendStatus').innerText = "🟢 Connected! Preparing transfer...";
-                } else if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-                    document.getElementById('sendStatus').innerText = "❌ Connection Lost or Blocked by Firewall.";
-                }
-            };
-
-            dataChannel = pc.createDataChannel("fileTransfer");
-            dataChannel.onopen = () => processFileQueue();
-
-            const offer = await pc.createOffer();
-            await pc.setLocalDescription(offer);
-            await roomRef.set({ offer: { type: offer.type, sdp: offer.sdp } });
-
-            roomRef.child('answer').on('value', async (snapshot) => {
-                if (snapshot.val() && !pc.currentRemoteDescription) {
-                    await pc.setRemoteDescription(new RTCSessionDescription(snapshot.val()));
-                    
-                    // Flush queued candidates now that remote description is set
-                    iceCandidateQueue.forEach(candidate => pc.addIceCandidate(new RTCIceCandidate(candidate)));
-                    iceCandidateQueue = [];
-                }
-            });
-
-            pc.onicecandidate = e => {
-                if (e.candidate) roomRef.child('senderCandidates').push(e.candidate.toJSON());
-            };
-
-            roomRef.child('receiverCandidates').on('child_added', snapshot => {
-                if (snapshot.val()) {
-                    if (pc.remoteDescription) {
-                        pc.addIceCandidate(new RTCIceCandidate(snapshot.val()));
-                    } else {
-                        iceCandidateQueue.push(snapshot.val()); // Queue it up!
-                    }
-                }
-            });
-        }
-
-        async function processFileQueue() {
-            document.getElementById('sendProgressCont').style.display = 'block';
-            const counterLabel = document.getElementById('sendFileCounter');
-            counterLabel.style.display = 'block';
-            
-            dataChannel.bufferedAmountLowThreshold = 1024 * 1024; 
-
-            for (let i = 0; i < selectedFiles.length; i++) {
-                const file = selectedFiles[i];
-                const isLastFile = i === selectedFiles.length - 1;
-                
-                counterLabel.innerText = `Sending file ${i + 1} of ${selectedFiles.length}`;
-                document.getElementById('sendStatus').innerText = `Sending: ${file.name}`;
-
-                dataChannel.send(JSON.stringify({ type: 'header', fileName: file.name, fileType: file.type, fileSize: file.size, totalFiles: selectedFiles.length }));
-
-                let offset = 0;
-                const readSlice = o => new Promise(resolve => {
-                    const reader = new FileReader();
-                    reader.onload = e => resolve(e.target.result);
-                    reader.readAsArrayBuffer(file.slice(o, o + CHUNK_SIZE));
-                });
-
-                while (offset < file.size) {
-                    const chunk = await readSlice(offset);
-                    if (dataChannel.bufferedAmount > dataChannel.bufferedAmountLowThreshold) {
-                        await new Promise(resolve => { dataChannel.onbufferedamountlow = () => { dataChannel.onbufferedamountlow = null; resolve(); }; });
-                    }
-                    dataChannel.send(chunk);
-                    offset += chunk.byteLength;
-                    if (offset % (CHUNK_SIZE * 50) === 0 || offset >= file.size) {
-                        document.getElementById('sendProgressBar').style.width = (offset / file.size * 100) + '%';
-                    }
-                }
-                dataChannel.send(JSON.stringify({ type: 'eof', isLastFile: isLastFile }));
-            }
-            document.getElementById('sendStatus').innerText = "✅ All Files Sent!";
-        }
-
-        // ==========================================
-        // RECEIVER LOGIC
-        // ==========================================
-        async function startReceiving() {
-            currentRoomCode = document.getElementById('joinCode').value.toUpperCase();
-            if (currentRoomCode.length !== 6) return alert("Enter a valid code");
-
-            db.goOnline(); 
-            iceCandidateQueue = []; // Reset queue
-            document.getElementById('receiveStatus').innerText = "Connecting...";
-
-            pc = new RTCPeerConnection(getWebRTCConfig());
-            const roomRef = db.ref('rooms/' + currentRoomCode);
-
-            setTimeout(() => {
-                db.goOffline();
-            }, 60000);
-
-            pc.oniceconnectionstatechange = () => {
-                if (pc.iceConnectionState === 'connected') {
-                    document.getElementById('receiveStatus').innerText = "🟢 Connected! Waiting for files...";
-                } else if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
-                    document.getElementById('receiveStatus').innerText = "❌ Connection Lost or Blocked by Firewall.";
-                }
-            };
-
-            pc.ondatachannel = (event) => setupReceiveChannel(event.channel);
-
-            const offerSnap = await roomRef.child('offer').once('value');
-            if (!offerSnap.exists()) {
-                db.goOffline(); 
-                document.getElementById('receiveStatus').innerText = "❌ Code not found.";
-                return alert("Transfer code not found or expired.");
-            }
-
-            // Set remote description first
-            await pc.setRemoteDescription(new RTCSessionDescription(offerSnap.val()));
-            
-            // Now that remote is set, handle any candidates that arrived while we were processing the offer
-            iceCandidateQueue.forEach(candidate => pc.addIceCandidate(new RTCIceCandidate(candidate)));
-            iceCandidateQueue = [];
-
-            const answer = await pc.createAnswer();
-            await pc.setLocalDescription(answer);
-            await roomRef.child('answer').set({ type: answer.type, sdp: answer.sdp });
-
-            pc.onicecandidate = e => {
-                if (e.candidate) roomRef.child('receiverCandidates').push(e.candidate.toJSON());
-            };
-
-            roomRef.child('senderCandidates').on('child_added', (snapshot) => {
-                if (snapshot.val()) {
-                    if (pc.remoteDescription) {
-                        pc.addIceCandidate(new RTCIceCandidate(snapshot.val()));
-                    } else {
-                        iceCandidateQueue.push(snapshot.val()); // Queue it up!
-                    }
-                }
-            });
-        }
-
-        function setupReceiveChannel(channel) {
-            let currentFileSize = 0, receivedBytes = 0, fileChunks = [], currentFileName = "", currentFileType = "";
-            let firstMessageReceived = false;
-
-            channel.onmessage = async (e) => {
-                if (!firstMessageReceived) {
-                    firstMessageReceived = true;
-                    document.getElementById('receiveProgressCont').style.display = 'block';
-                    document.getElementById('receiveFileCounter').style.display = 'block';
-                }
-
-                if (typeof e.data === 'string') {
-                    const msg = JSON.parse(e.data);
-                    if (msg.type === 'header') {
-                        document.getElementById('receiveStatus').innerText = `Receiving: ${msg.fileName}`;
-                        currentFileSize = msg.fileSize; currentFileName = msg.fileName; currentFileType = msg.fileType || 'application/octet-stream';
-                        receivedBytes = 0; fileChunks = []; 
-                        if (msg.totalFiles > 1) document.getElementById('downloadWarning').style.display = 'block';
-                    } 
-                    else if (msg.type === 'eof') {
-                        const blob = new Blob(fileChunks, { type: currentFileType });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a'); a.href = url; a.download = currentFileName;
-                        document.body.appendChild(a); a.click();
-                        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 1000);
-                        fileChunks = []; 
-                        if (msg.isLastFile) {
-                            document.getElementById('receiveStatus').innerText = "✅ All Files Received!";
-                            document.getElementById('receiveProgressBar').style.width = '100%';
-                            document.getElementById('downloadWarning').style.display = 'none'; 
-                        }
-                    }
+    function setupDC(channel) {
+        let meta, chunks = [], received = 0;
+        document.getElementById('pCont').style.display = 'block';
+        channel.onmessage = e => {
+            if (typeof e.data === 'string') {
+                if (e.data === "EOF") {
+                    const blob = new Blob(chunks, { type: meta.type });
+                    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = meta.name; a.click();
+                    chunks = []; received = 0;
                 } else {
-                    fileChunks.push(e.data);
-                    receivedBytes += e.data.byteLength;
-                    if (receivedBytes % (CHUNK_SIZE * 50) === 0 || receivedBytes >= currentFileSize) {
-                        document.getElementById('receiveProgressBar').style.width = (receivedBytes / currentFileSize * 100) + '%';
-                    }
+                    meta = JSON.parse(e.data);
+                    document.getElementById('statusText').innerText = `Receiving: ${meta.name}`;
                 }
-            };
-        }
-    </script>
+            } else {
+                chunks.push(e.data);
+                received += e.data.byteLength;
+                document.getElementById('pBar').style.width = (received / meta.size * 100) + '%';
+            }
+        };
+    }
+</script>
 </body>
 </html>
