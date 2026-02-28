@@ -92,6 +92,8 @@
     </div>
     <script>
         // 1. FIREBASE CONFIGURATION (REPLACE WITH YOURS)
+
+
 const firebaseConfig = {
 
   apiKey: "AIzaSyA-NhlaD3XRLKEf_y6xCMOElXnx5IVWhIg",
@@ -112,12 +114,18 @@ const firebaseConfig = {
 
 };
 
+        
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
+        
+        // ZERO-IDLE RULE 1: Disconnect immediately on page load to save limits
+        db.goOffline();
 
         // 2. GLOBALS
         let pc, dataChannel;
         let selectedFiles = [];
+        let currentRoomCode = null; 
+        let connectionTimeout = null; // Holds the 90-second timer
         const CHUNK_SIZE = 16384; 
 
         // 3. UI & UTILS
@@ -152,14 +160,17 @@ const firebaseConfig = {
         async function startSending() {
             if (selectedFiles.length === 0) return alert("Select files first!");
 
-            const code = generateCode();
-            document.getElementById('sendCodeDisplay').innerText = code;
-            document.getElementById('sendStatus').innerText = "Waiting for receiver...";
+            // ZERO-IDLE RULE 2: Wake up Firebase only when user initiates action
+            db.goOnline();
+
+            currentRoomCode = generateCode();
+            document.getElementById('sendCodeDisplay').innerText = currentRoomCode;
+            document.getElementById('sendStatus').innerText = "Waiting for receiver (Code expires in 1:30)...";
             document.getElementById('generateBtn').disabled = true;
             document.getElementById('networkMode').disabled = true;
 
             pc = new RTCPeerConnection(getWebRTCConfig());
-            setupConnectionListeners(pc, 'sendStatus');
+            setupConnectionListeners(pc, 'sendStatus', currentRoomCode);
 
             dataChannel = pc.createDataChannel("fileTransfer");
             dataChannel.onopen = () => processFileQueue();
@@ -167,13 +178,15 @@ const firebaseConfig = {
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
 
-            const roomRef = db.ref('rooms/' + code);
-            roomRef.set({ offer: { type: offer.type, sdp: offer.sdp } });
+            const roomRef = db.ref('rooms/' + currentRoomCode);
+            
+            roomRef.onDisconnect().remove(); 
+            await roomRef.set({ offer: { type: offer.type, sdp: offer.sdp } });
 
-            roomRef.on('value', async (snapshot) => {
-                const data = snapshot.val();
-                if (data?.answer && !pc.currentRemoteDescription) {
-                    await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+            roomRef.child('answer').on('value', async (snapshot) => {
+                const answer = snapshot.val();
+                if (answer && !pc.currentRemoteDescription) {
+                    await pc.setRemoteDescription(new RTCSessionDescription(answer));
                 }
             });
 
@@ -182,8 +195,19 @@ const firebaseConfig = {
             };
 
             roomRef.child('receiverCandidates').on('child_added', snapshot => {
-                pc.addIceCandidate(new RTCIceCandidate(snapshot.val()));
+                if (snapshot.val()) pc.addIceCandidate(new RTCIceCandidate(snapshot.val()));
             });
+
+            // ZERO-IDLE RULE 3: Strict 90-Second (1:30) Kill Switch
+            connectionTimeout = setTimeout(() => {
+                if (pc && pc.iceConnectionState !== 'connected') {
+                    forceCleanup(currentRoomCode);
+                    document.getElementById('sendStatus').innerText = "⏱️ Code expired. Please generate a new one.";
+                    document.getElementById('generateBtn').disabled = false;
+                    document.getElementById('networkMode').disabled = false;
+                    document.getElementById('sendCodeDisplay').innerText = "";
+                }
+            }, 90000);
         }
 
         async function processFileQueue() {
@@ -200,7 +224,6 @@ const firebaseConfig = {
                 counterLabel.innerText = `Sending file ${i + 1} of ${selectedFiles.length}`;
                 document.getElementById('sendStatus').innerText = `Sending: ${file.name}`;
 
-                // Include totalFiles count so receiver knows if they need to expect multiples
                 dataChannel.send(JSON.stringify({ 
                     type: 'header', 
                     fileName: file.name, 
@@ -240,39 +263,55 @@ const firebaseConfig = {
             }
             
             document.getElementById('sendStatus').innerText = "✅ All Files Sent Successfully!";
-            cleanup(document.getElementById('sendCodeDisplay').innerText);
         }
 
         // 5. RECEIVER LOGIC
         async function startReceiving() {
-            const code = document.getElementById('joinCode').value.toUpperCase();
-            if (code.length !== 6) return alert("Enter a valid 6-character code");
+            currentRoomCode = document.getElementById('joinCode').value.toUpperCase();
+            if (currentRoomCode.length !== 6) return alert("Enter a valid 6-character code");
+
+            // ZERO-IDLE RULE 2: Wake up Firebase
+            db.goOnline();
 
             document.getElementById('receiveStatus').innerText = "Connecting...";
 
             pc = new RTCPeerConnection(getWebRTCConfig());
-            setupConnectionListeners(pc, 'receiveStatus');
+            setupConnectionListeners(pc, 'receiveStatus', currentRoomCode);
 
             pc.ondatachannel = (event) => setupReceiveChannel(event.channel);
 
-            const roomRef = db.ref('rooms/' + code);
-            const snapshot = await roomRef.once('value');
-            const data = snapshot.val();
+            const roomRef = db.ref('rooms/' + currentRoomCode);
+            roomRef.onDisconnect().remove();
 
-            if (!data) return alert("Transfer code not found or expired.");
+            const offerSnap = await roomRef.child('offer').once('value');
+            const offer = offerSnap.val();
 
-            await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+            if (!offer) {
+                forceCleanup(null); // Ensure we go back offline
+                return alert("Transfer code not found or expired.");
+            }
+
+            await pc.setRemoteDescription(new RTCSessionDescription(offer));
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
-            roomRef.update({ answer: { type: answer.type, sdp: answer.sdp } });
+            
+            await roomRef.child('answer').set({ type: answer.type, sdp: answer.sdp });
 
             pc.onicecandidate = e => {
                 if (e.candidate) roomRef.child('receiverCandidates').push(e.candidate.toJSON());
             };
 
             roomRef.child('senderCandidates').on('child_added', (snapshot) => {
-                pc.addIceCandidate(new RTCIceCandidate(snapshot.val()));
+                if (snapshot.val()) pc.addIceCandidate(new RTCIceCandidate(snapshot.val()));
             });
+
+            // Prevent receiver from hanging if connection drops midway during setup
+            connectionTimeout = setTimeout(() => {
+                if (pc && pc.iceConnectionState !== 'connected') {
+                    forceCleanup(currentRoomCode);
+                    document.getElementById('receiveStatus').innerText = "⏱️ Connection timed out.";
+                }
+            }, 90000);
         }
 
         async function setupReceiveChannel(channel) {
@@ -297,13 +336,11 @@ const firebaseConfig = {
                         receivedBytes = 0;
                         fileChunks = []; 
                         
-                        // Show warning only if receiving more than 1 file
                         if (msg.totalFiles > 1) {
                             document.getElementById('downloadWarning').style.display = 'block';
                         }
                     } 
                     else if (msg.type === 'eof') {
-                        
                         const blob = new Blob(fileChunks, { type: currentFileType });
                         const url = URL.createObjectURL(blob);
                         
@@ -315,15 +352,14 @@ const firebaseConfig = {
                         
                         setTimeout(() => {
                             document.body.removeChild(a);
-                            URL.revokeObjectURL(url);
+                            URL.revokeObjectURL(url); 
                         }, 1000);
-                        
                         fileChunks = []; 
 
                         if (msg.isLastFile) {
                             document.getElementById('receiveStatus').innerText = "✅ All Files Received Successfully!";
                             document.getElementById('receiveProgressBar').style.width = '100%';
-                            document.getElementById('downloadWarning').style.display = 'none'; // Hide warning when done
+                            document.getElementById('downloadWarning').style.display = 'none'; 
                         }
                     }
                 } else {
@@ -337,21 +373,55 @@ const firebaseConfig = {
             };
         }
 
-        // 6. STABILITY & CLEANUP
-        function setupConnectionListeners(pc, statusId) {
+        // 6. STABILITY & IRONCLAD CLEANUP
+        function setupConnectionListeners(pc, statusId, code) {
             pc.oniceconnectionstatechange = () => {
                 const state = pc.iceConnectionState;
+                
                 if (state === 'connected') {
                     document.getElementById(statusId).innerText = "🟢 Connected! Transferring...";
-                } else if (state === 'failed' || state === 'disconnected') {
+                    forceCleanup(code); // Trigger wipe and go offline
+                } 
+                else if (state === 'failed' || state === 'disconnected' || state === 'closed') {
                     document.getElementById(statusId).innerText = "❌ Connection Lost.";
+                    forceCleanup(code); 
                 }
             };
         }
 
-        function cleanup(code) {
-            setTimeout(() => { db.ref('rooms/' + code).remove(); }, 5000);
+        // ZERO-IDLE RULE 4: The Ultimate Wiping & Disconnect Function
+        function forceCleanup(code) {
+            if (connectionTimeout) clearTimeout(connectionTimeout); // Stop the 90s timer
+            
+            if (!code) {
+                db.goOffline(); // Just sever the connection if no code exists
+                return;
+            }
+
+            const roomRef = db.ref('rooms/' + code);
+            
+            // Unsubscribe to stop bandwidth usage
+            roomRef.off(); 
+            roomRef.child('answer').off();
+            roomRef.child('senderCandidates').off();
+            roomRef.child('receiverCandidates').off();
+            roomRef.onDisconnect().cancel(); 
+            
+            // Delete data, and THEN explicitly hang up the websocket
+            roomRef.remove().then(() => {
+                db.goOffline(); 
+            }).catch(() => {
+                db.goOffline(); // Ensure it disconnects even if delete fails
+            });
+            
+            currentRoomCode = null;
         }
+
+        // If user hits back button or closes tab explicitly
+        window.addEventListener('beforeunload', () => {
+            if (currentRoomCode) forceCleanup(currentRoomCode);
+        });
+
     </script>
 </body>
 </html>
