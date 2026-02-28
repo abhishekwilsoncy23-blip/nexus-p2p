@@ -93,7 +93,6 @@
     <script>
         // 1. FIREBASE CONFIGURATION (REPLACE WITH YOURS)
 
-
 const firebaseConfig = {
 
   apiKey: "AIzaSyA-NhlaD3XRLKEf_y6xCMOElXnx5IVWhIg",
@@ -117,15 +116,15 @@ const firebaseConfig = {
         
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
-        
-        // ZERO-IDLE RULE 1: Disconnect immediately on page load to save limits
+
+        // 🛑 ZERO-IDLE RULE 1: Disconnect immediately on page load
         db.goOffline();
 
         // 2. GLOBALS
         let pc, dataChannel;
         let selectedFiles = [];
         let currentRoomCode = null; 
-        let connectionTimeout = null; // Holds the 90-second timer
+        let connectionTimeout = null; 
         const CHUNK_SIZE = 16384; 
 
         // 3. UI & UTILS
@@ -160,7 +159,7 @@ const firebaseConfig = {
         async function startSending() {
             if (selectedFiles.length === 0) return alert("Select files first!");
 
-            // ZERO-IDLE RULE 2: Wake up Firebase only when user initiates action
+            // 🟢 ZERO-IDLE RULE 2: Wake up Firebase only when user acts
             db.goOnline();
 
             currentRoomCode = generateCode();
@@ -170,7 +169,7 @@ const firebaseConfig = {
             document.getElementById('networkMode').disabled = true;
 
             pc = new RTCPeerConnection(getWebRTCConfig());
-            setupConnectionListeners(pc, 'sendStatus', currentRoomCode);
+            setupConnectionListeners(pc, 'sendStatus', currentRoomCode, 'sender');
 
             dataChannel = pc.createDataChannel("fileTransfer");
             dataChannel.onopen = () => processFileQueue();
@@ -198,10 +197,10 @@ const firebaseConfig = {
                 if (snapshot.val()) pc.addIceCandidate(new RTCIceCandidate(snapshot.val()));
             });
 
-            // ZERO-IDLE RULE 3: Strict 90-Second (1:30) Kill Switch
+            // ⏱️ 90-SECOND EXPIRE RULE
             connectionTimeout = setTimeout(() => {
                 if (pc && pc.iceConnectionState !== 'connected') {
-                    forceCleanup(currentRoomCode);
+                    forceCleanup(currentRoomCode, true); // true = Delete the room
                     document.getElementById('sendStatus').innerText = "⏱️ Code expired. Please generate a new one.";
                     document.getElementById('generateBtn').disabled = false;
                     document.getElementById('networkMode').disabled = false;
@@ -270,13 +269,13 @@ const firebaseConfig = {
             currentRoomCode = document.getElementById('joinCode').value.toUpperCase();
             if (currentRoomCode.length !== 6) return alert("Enter a valid 6-character code");
 
-            // ZERO-IDLE RULE 2: Wake up Firebase
+            // 🟢 ZERO-IDLE RULE 2: Wake up Firebase
             db.goOnline();
 
             document.getElementById('receiveStatus').innerText = "Connecting...";
 
             pc = new RTCPeerConnection(getWebRTCConfig());
-            setupConnectionListeners(pc, 'receiveStatus', currentRoomCode);
+            setupConnectionListeners(pc, 'receiveStatus', currentRoomCode, 'receiver');
 
             pc.ondatachannel = (event) => setupReceiveChannel(event.channel);
 
@@ -287,7 +286,8 @@ const firebaseConfig = {
             const offer = offerSnap.val();
 
             if (!offer) {
-                forceCleanup(null); // Ensure we go back offline
+                forceCleanup(null, false); 
+                document.getElementById('receiveStatus').innerText = "❌ Transfer code not found.";
                 return alert("Transfer code not found or expired.");
             }
 
@@ -305,10 +305,11 @@ const firebaseConfig = {
                 if (snapshot.val()) pc.addIceCandidate(new RTCIceCandidate(snapshot.val()));
             });
 
-            // Prevent receiver from hanging if connection drops midway during setup
+            // ⏱️ 90-SECOND EXPIRE RULE
             connectionTimeout = setTimeout(() => {
                 if (pc && pc.iceConnectionState !== 'connected') {
-                    forceCleanup(currentRoomCode);
+                    // Receiver just disconnects locally, Sender's 90s timer cleans up the DB
+                    forceCleanup(currentRoomCode, false); 
                     document.getElementById('receiveStatus').innerText = "⏱️ Connection timed out.";
                 }
             }, 90000);
@@ -373,53 +374,73 @@ const firebaseConfig = {
             };
         }
 
-        // 6. STABILITY & IRONCLAD CLEANUP
-        function setupConnectionListeners(pc, statusId, code) {
+        // 6. RELIABILITY & CLEANUP LOGIC
+        function setupConnectionListeners(pc, statusId, code, role) {
             pc.oniceconnectionstatechange = () => {
                 const state = pc.iceConnectionState;
                 
                 if (state === 'connected') {
                     document.getElementById(statusId).innerText = "🟢 Connected! Transferring...";
-                    forceCleanup(code); // Trigger wipe and go offline
+                    if (connectionTimeout) clearTimeout(connectionTimeout); 
+                    
+                    if (role === 'receiver') {
+                        // 🛡️ THE 10-SECOND SHIELD: 
+                        // Wait 10 seconds to ensure the Sender completely locks in before deleting DB
+                        const capturedCode = code; // Capture code in scope just in case
+                        setTimeout(() => {
+                            forceCleanup(capturedCode, true); 
+                        }, 10000); 
+                    } else {
+                        // Sender hangs up Firebase connection immediately (saves limits)
+                        forceCleanup(code, false); 
+                    }
                 } 
                 else if (state === 'failed' || state === 'disconnected' || state === 'closed') {
                     document.getElementById(statusId).innerText = "❌ Connection Lost.";
-                    forceCleanup(code); 
+                    forceCleanup(code, true); 
                 }
             };
         }
 
-        // ZERO-IDLE RULE 4: The Ultimate Wiping & Disconnect Function
-        function forceCleanup(code) {
-            if (connectionTimeout) clearTimeout(connectionTimeout); // Stop the 90s timer
+        // 🧹 MASTER CLEANUP FUNCTION
+        function forceCleanup(code, shouldDeleteRoom = true) {
+            if (connectionTimeout) clearTimeout(connectionTimeout); 
             
             if (!code) {
-                db.goOffline(); // Just sever the connection if no code exists
+                db.goOffline(); 
                 return;
             }
 
             const roomRef = db.ref('rooms/' + code);
             
-            // Unsubscribe to stop bandwidth usage
+            // Stop listening to save bandwidth
             roomRef.off(); 
             roomRef.child('answer').off();
             roomRef.child('senderCandidates').off();
             roomRef.child('receiverCandidates').off();
-            roomRef.onDisconnect().cancel(); 
             
-            // Delete data, and THEN explicitly hang up the websocket
-            roomRef.remove().then(() => {
-                db.goOffline(); 
-            }).catch(() => {
-                db.goOffline(); // Ensure it disconnects even if delete fails
-            });
+            if (shouldDeleteRoom) {
+                roomRef.onDisconnect().cancel(); 
+                roomRef.remove().then(() => {
+                    db.goOffline(); // 🛑 Hang up Firebase
+                }).catch(() => {
+                    db.goOffline(); 
+                });
+            } else {
+                db.goOffline(); // 🛑 Hang up Firebase without deleting data
+            }
             
-            currentRoomCode = null;
+            // Reset code so beforeunload doesn't fire unnecessarily
+            if (currentRoomCode === code) {
+                currentRoomCode = null;
+            }
         }
 
-        // If user hits back button or closes tab explicitly
+        // 🚪 If user hits back button, refreshes, or closes tab
         window.addEventListener('beforeunload', () => {
-            if (currentRoomCode) forceCleanup(currentRoomCode);
+            if (currentRoomCode) {
+                forceCleanup(currentRoomCode, true);
+            }
         });
 
     </script>
