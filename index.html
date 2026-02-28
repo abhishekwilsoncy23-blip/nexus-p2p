@@ -92,7 +92,6 @@
     </div>
     <script>
         // 1. FIREBASE CONFIGURATION (REPLACE WITH YOURS)
-
 const firebaseConfig = {
 
   apiKey: "AIzaSyA-NhlaD3XRLKEf_y6xCMOElXnx5IVWhIg",
@@ -113,11 +112,10 @@ const firebaseConfig = {
 
 };
 
-        
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // 🛑 ZERO-IDLE RULE 1: Disconnect immediately on page load
+        // 🛑 ZERO-IDLE RULE 1: Disconnect immediately on page load to save limits
         db.goOffline();
 
         // 2. GLOBALS
@@ -159,7 +157,7 @@ const firebaseConfig = {
         async function startSending() {
             if (selectedFiles.length === 0) return alert("Select files first!");
 
-            // 🟢 ZERO-IDLE RULE 2: Wake up Firebase only when user acts
+            // 🟢 ZERO-IDLE RULE 2: Wake up Firebase only when user initiates action
             db.goOnline();
 
             currentRoomCode = generateCode();
@@ -179,6 +177,7 @@ const firebaseConfig = {
 
             const roomRef = db.ref('rooms/' + currentRoomCode);
             
+            // Tell server to delete room if Sender suddenly closes tab before connection
             roomRef.onDisconnect().remove(); 
             await roomRef.set({ offer: { type: offer.type, sdp: offer.sdp } });
 
@@ -197,7 +196,7 @@ const firebaseConfig = {
                 if (snapshot.val()) pc.addIceCandidate(new RTCIceCandidate(snapshot.val()));
             });
 
-            // ⏱️ 90-SECOND EXPIRE RULE
+            // ⏱️ 90-SECOND EXPIRE RULE: Sender deletes room if no one joins
             connectionTimeout = setTimeout(() => {
                 if (pc && pc.iceConnectionState !== 'connected') {
                     forceCleanup(currentRoomCode, true); // true = Delete the room
@@ -280,7 +279,7 @@ const firebaseConfig = {
             pc.ondatachannel = (event) => setupReceiveChannel(event.channel);
 
             const roomRef = db.ref('rooms/' + currentRoomCode);
-            roomRef.onDisconnect().remove();
+            roomRef.onDisconnect().remove(); // Server-side cleanup if tab closes during setup
 
             const offerSnap = await roomRef.child('offer').once('value');
             const offer = offerSnap.val();
@@ -305,10 +304,10 @@ const firebaseConfig = {
                 if (snapshot.val()) pc.addIceCandidate(new RTCIceCandidate(snapshot.val()));
             });
 
-            // ⏱️ 90-SECOND EXPIRE RULE
+            // ⏱️ 90-SECOND TIMER: Receiver timeout
             connectionTimeout = setTimeout(() => {
                 if (pc && pc.iceConnectionState !== 'connected') {
-                    // Receiver just disconnects locally, Sender's 90s timer cleans up the DB
+                    // Sender's timeout will delete the DB, Receiver just disconnects locally
                     forceCleanup(currentRoomCode, false); 
                     document.getElementById('receiveStatus').innerText = "⏱️ Connection timed out.";
                 }
@@ -381,17 +380,17 @@ const firebaseConfig = {
                 
                 if (state === 'connected') {
                     document.getElementById(statusId).innerText = "🟢 Connected! Transferring...";
-                    if (connectionTimeout) clearTimeout(connectionTimeout); 
+                    if (connectionTimeout) clearTimeout(connectionTimeout); // Stop the 90s timer
                     
                     if (role === 'receiver') {
-                        // 🛡️ THE 10-SECOND SHIELD: 
-                        // Wait 10 seconds to ensure the Sender completely locks in before deleting DB
-                        const capturedCode = code; // Capture code in scope just in case
+                        // 🛡️ THE 30-SECOND SHIELD: 
+                        // Wait 30s to ensure Sender completely locks in before deleting DB
+                        const capturedCode = code; 
                         setTimeout(() => {
-                            forceCleanup(capturedCode, true); 
-                        }, 10000); 
+                            forceCleanup(capturedCode, true); // true = delete room
+                        }, 30000); 
                     } else {
-                        // Sender hangs up Firebase connection immediately (saves limits)
+                        // Sender just hangs up Firebase connection immediately
                         forceCleanup(code, false); 
                     }
                 } 
@@ -413,22 +412,30 @@ const firebaseConfig = {
 
             const roomRef = db.ref('rooms/' + code);
             
-            // Stop listening to save bandwidth
+            // 1. Stop listening to save bandwidth
             roomRef.off(); 
             roomRef.child('answer').off();
             roomRef.child('senderCandidates').off();
             roomRef.child('receiverCandidates').off();
             
-            if (shouldDeleteRoom) {
-                roomRef.onDisconnect().cancel(); 
-                roomRef.remove().then(() => {
-                    db.goOffline(); // 🛑 Hang up Firebase
-                }).catch(() => {
+            // 2. CRITICAL FIX: Cancel the server-side self-destruct BEFORE going offline
+            roomRef.onDisconnect().cancel().then(() => {
+                
+                if (shouldDeleteRoom) {
+                    // Receiver deletes the room, then goes offline
+                    roomRef.remove().then(() => {
+                        db.goOffline(); 
+                    }).catch(() => {
+                        db.goOffline(); 
+                    });
+                } else {
+                    // Sender leaves the room intact and just goes offline safely
                     db.goOffline(); 
-                });
-            } else {
-                db.goOffline(); // 🛑 Hang up Firebase without deleting data
-            }
+                }
+                
+            }).catch(() => {
+                db.goOffline(); // Failsafe
+            });
             
             // Reset code so beforeunload doesn't fire unnecessarily
             if (currentRoomCode === code) {
