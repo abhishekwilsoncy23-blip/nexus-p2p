@@ -7,22 +7,19 @@
     
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#f97316">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2885/2885417.png">
 
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
     
     <style>
-        :root { --brand: #f97316; --bg: #fff7ed; --card: #ffffff; --text: #431407; --gray: #94a3b8; --success: #22c55e; --error: #ef4444; }
+        :root { --brand: #f97316; --bg: #fff7ed; --card: #ffffff; --text: #431407; --error: #ef4444; }
         * { box-sizing: border-box; font-family: 'Segoe UI', system-ui, sans-serif; }
         body { background: var(--bg); color: var(--text); margin: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 20px; }
         
         .main-container { width: 100%; max-width: 450px; display: flex; flex-direction: column; gap: 15px; }
         .card { background: var(--card); border-radius: 24px; padding: 30px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); border: 1px solid #ffedd5; }
         
-        /* Silent Ad Slot */
         .ds-sys-footer-info { width: 100%; min-height: 250px; background: #fff; border-radius: 16px; display: flex; align-items: center; justify-content: center; border: 1px solid #ffedd5; overflow: hidden; margin-top: 10px; }
 
         h1 { color: var(--brand); text-align: center; margin: 0; font-size: 34px; letter-spacing: -1.5px; }
@@ -31,13 +28,13 @@
         .tabs { display: flex; background: #ffedd5; padding: 5px; border-radius: 14px; margin-bottom: 20px; }
         .tab-btn { flex: 1; border: none; padding: 12px; border-radius: 10px; cursor: pointer; font-weight: bold; background: transparent; color: #c2410c; }
         .tab-btn.active { background: white; color: var(--brand); box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
-        .tab-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-
+        
         .panel { display: none; }
         .panel.active { display: block; }
 
         .btn { width: 100%; padding: 16px; border: none; border-radius: 12px; background: var(--brand); color: white; font-weight: bold; font-size: 16px; cursor: pointer; transition: 0.2s; }
-        .btn:disabled { background: #fed7aa; cursor: not-allowed; opacity: 0.7; }
+        .btn:disabled { background: #fed7aa; cursor: not-allowed; }
+        .btn-outline { background: transparent; border: 2px solid var(--brand); color: var(--brand); margin-top: 10px; }
         
         .file-box { border: 2px dashed #fdba74; border-radius: 12px; padding: 30px; text-align: center; margin-bottom: 15px; background: #fffcf9; cursor: pointer; display: block; }
         .file-box.locked { opacity: 0.5; pointer-events: none; }
@@ -47,8 +44,13 @@
         .progress-bar { width: 0%; height: 100%; background: var(--brand); transition: width 0.1s; }
         .status-text { text-align: center; font-size: 13px; font-weight: 700; color: #9a3412; padding: 10px; border-radius: 8px; background: #fff7ed; }
         
-        /* Firewall Note */
-        .firewall-note { font-size: 11px; color: #9a3412; text-align: center; margin-top: 15px; background: #ffedd5; padding: 10px; border-radius: 8px; display: none; }
+        /* Internet Prompt UI */
+        .internet-prompt { display: none; margin-top: 15px; padding: 15px; border-radius: 12px; background: #fee2e2; border: 1px solid #fca5a5; }
+        .internet-prompt h3 { margin: 0 0 10px 0; color: #b91c1c; font-size: 16px; }
+        .internet-prompt p { font-size: 13px; color: #991b1b; margin: 0 0 15px 0; line-height: 1.4; }
+        
+        .troubleshoot-box { background: rgba(255,255,255,0.6); padding: 10px; border-radius: 8px; font-size: 12px; color: #7f1d1d; margin-bottom: 15px; }
+        .troubleshoot-box ul { margin: 5px 0 0; padding-left: 20px; }
     </style>
 </head>
 <body>
@@ -56,7 +58,7 @@
 <div class="main-container">
     <div class="card">
         <h1>DineShare</h1>
-        <div class="tagline">Both devices must be on the SAME network</div>
+        <div class="tagline">P2P File Transfer (Local & Internet)</div>
 
         <div class="tabs">
             <button class="tab-btn active" id="btn-send-tab" onclick="setMode('send')">Send</button>
@@ -66,12 +68,30 @@
         <div id="sendPanel" class="panel active">
             <label class="file-box" id="file-drop-zone">
                 <input type="file" id="filePicker" multiple hidden onchange="filesReady()">
-                <div id="fileStatus">📁 Select Files First</div>
+                <div id="fileStatus">📁 Select Files</div>
             </label>
             <button class="btn" id="genBtn" onclick="initSender()" disabled>Generate Code</button>
+            
             <div id="codeArea" style="display:none">
                 <div class="code-view" id="codeDisplay">------</div>
                 <div style="text-align:center; font-size:12px; color:var(--brand); font-weight:bold;" id="timer">Expires in 60s</div>
+            </div>
+
+            <div id="internetPrompt" class="internet-prompt">
+                <h3>🌐 Receiver is not on your Local Network</h3>
+                <p>A direct local connection failed. You can still send the files securely over the internet, but it will consume data and may be slower.</p>
+                
+                <div class="troubleshoot-box">
+                    <b>Why did this happen?</b>
+                    <ul>
+                        <li>Devices are on different Wi-Fi networks.</li>
+                        <li><b>Guest Wi-Fi Isolation</b> is blocking device-to-device communication.</li>
+                        <li>A strict <b>Firewall, VPN, or Antivirus</b> is blocking local ports.</li>
+                    </ul>
+                </div>
+
+                <button class="btn" onclick="startTransferData()">Send Over Internet Anyway</button>
+                <button class="btn btn-outline" onclick="cancelTransfer()">Cancel</button>
             </div>
         </div>
 
@@ -83,16 +103,12 @@
         <div id="transferInfo" style="margin-top:20px;">
             <div class="status-text" id="currentStatus">Ready</div>
             <div class="progress-cont" id="pCont"><div class="progress-bar" id="pBar"></div></div>
-            
-            <div id="firewallNote" class="firewall-note">
-                <b>Connection Slow?</b> Check if a Firewall or Antivirus is blocking P2P, or ensure you are not on a public Guest WiFi that restricts device-to-device communication.
-            </div>
         </div>
     </div>
 
     <div class="ds-sys-footer-info" id="sys-status-node">
         <script type="text/javascript">
-            atOptions = { 'key' : 'YOUR_KEY', 'format' : 'iframe', 'height' : 250, 'width' : 300, 'params' : {} };
+            atOptions = { 'key' : 'YOUR_ADSTERRA_KEY', 'format' : 'iframe', 'height' : 250, 'width' : 300, 'params' : {} };
         </script>
         <script type="text/javascript" src="//www.highperformanceformat.com/YOUR_ID/invoke.js"></script>
     </div>
@@ -100,36 +116,26 @@
 
 <script>
     // --- FIREBASE CONFIG ---
-const firebaseConfig = {
-
-  apiKey: "AIzaSyA-NhlaD3XRLKEf_y6xCMOElXnx5IVWhIg",
-
-  authDomain: "dineshare-web.firebaseapp.com",
-
-  databaseURL: "https://dineshare-web-default-rtdb.firebaseio.com",
-
-  projectId: "dineshare-web",
-
-  storageBucket: "dineshare-web.firebasestorage.app",
-
-  messagingSenderId: "456148087993",
-
-  appId: "1:456148087993:web:041e5569a4722b64795768",
-
-  measurementId: "G-633V93EBW6"
-
-};
-
+    const firebaseConfig = {
+        apiKey: "YOUR_API_KEY",
+        authDomain: "YOUR_PROJECT.firebaseapp.com",
+        databaseURL: "https://YOUR_PROJECT.firebaseio.com",
+        projectId: "YOUR_PROJECT_ID",
+        storageBucket: "YOUR_PROJECT.appspot.com",
+        messagingSenderId: "YOUR_ID",
+        appId: "YOUR_APP_ID"
+    };
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
+    
+    // Google STUN server for NAT traversal
     const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
-    let pc, dc, files = [], expirationTimer, firewallTimer;
+    let pc, dc, files = [], expirationTimer;
+    let roomRefGlobal = null;
 
-    // --- PWA REGISTRATION ---
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 
-    // --- UI LOGIC ---
     function setMode(mode) {
         document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -150,29 +156,61 @@ const firebaseConfig = {
         document.getElementById('file-drop-zone').classList.add('locked');
     }
 
+    // --- CHECK CONNECTION TYPE ---
+    async function isLocalConnection(peerConnection) {
+        try {
+            const stats = await peerConnection.getStats();
+            let isLocal = false;
+            
+            stats.forEach(report => {
+                if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                    const localCandidate = stats.get(report.localCandidateId);
+                    const remoteCandidate = stats.get(report.remoteCandidateId);
+                    // If both candidates are 'host', it's a true local network connection
+                    if (localCandidate && remoteCandidate) {
+                        if (localCandidate.candidateType === 'host' && remoteCandidate.candidateType === 'host') {
+                            isLocal = true;
+                        }
+                    }
+                }
+            });
+            return isLocal;
+        } catch (e) {
+            return false; // Assume internet if stats fail
+        }
+    }
+
     // --- SENDER ---
     async function initSender() {
         lockUI();
         const code = Math.random().toString(36).substring(2, 8).toUpperCase();
         document.getElementById('codeDisplay').innerText = code;
         document.getElementById('codeArea').style.display = 'block';
+        document.getElementById('currentStatus').innerText = "Waiting for receiver...";
 
         pc = new RTCPeerConnection(rtcConfig);
         dc = pc.createDataChannel("dineData");
         
-        pc.oniceconnectionstatechange = () => {
-            if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") {
-                db.goOffline();
-                clearInterval(expirationTimer);
-                clearTimeout(firewallTimer);
-                document.getElementById('timer').innerText = "DIRECT P2P ENCRYPTED";
-                document.getElementById('firewallNote').style.display = 'none';
+        // When Data Channel is ready, check if it's local before sending
+        dc.onopen = async () => {
+            db.goOffline(); // Optimization: Disconnect from Firebase instantly
+            clearInterval(expirationTimer);
+            if (roomRefGlobal) roomRefGlobal.remove(); // Cleanup database
+
+            const local = await isLocalConnection(pc);
+            
+            if (local) {
+                document.getElementById('currentStatus').innerText = "⚡ Local connection established. Sending...";
+                startTransferData();
+            } else {
+                document.getElementById('currentStatus').innerText = "⚠️ Checking connection route...";
+                document.getElementById('codeArea').style.display = 'none';
+                document.getElementById('internetPrompt').style.display = 'block';
             }
         };
 
-        dc.onopen = () => transferData();
-
         const roomRef = db.ref('dineshare_rooms/' + code);
+        roomRefGlobal = roomRef;
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         await roomRef.set({ offer: { sdp: offer.sdp, type: offer.type } });
@@ -185,29 +223,34 @@ const firebaseConfig = {
                 clearInterval(expirationTimer);
                 roomRef.remove();
                 document.getElementById('currentStatus').innerText = "Expired. Refresh to start over.";
+                pc.close();
             }
         }, 1000);
-
-        // --- FIREWALL NOTE ---
-        firewallTimer = setTimeout(() => {
-            if (pc.iceConnectionState !== "connected") {
-                document.getElementById('firewallNote').style.display = 'block';
-            }
-        }, 15000); // Show note after 15 seconds
 
         roomRef.child('answer').on('value', snap => {
             if(snap.val() && !pc.currentRemoteDescription) pc.setRemoteDescription(new RTCSessionDescription(snap.val()));
         });
 
-        pc.onicecandidate = e => e.candidate && roomRef.child('sCand').push(e.candidate.toJSON());
+        pc.onicecandidate = e => {
+            if (e.candidate) roomRef.child('sCand').push(e.candidate.toJSON());
+        };
         roomRef.child('rCand').on('child_added', snap => pc.addIceCandidate(new RTCIceCandidate(snap.val())));
     }
 
-    async function transferData() {
+    function cancelTransfer() {
+        if (pc) pc.close();
+        document.getElementById('internetPrompt').style.display = 'none';
+        document.getElementById('currentStatus').innerText = "Transfer Cancelled. Refresh the page.";
+    }
+
+    async function startTransferData() {
+        document.getElementById('internetPrompt').style.display = 'none';
         document.getElementById('pCont').style.display = 'block';
+        
         for (let file of files) {
             document.getElementById('currentStatus').innerText = `Sending: ${file.name}`;
             dc.send(JSON.stringify({ name: file.name, size: file.size, type: file.type }));
+            
             let offset = 0;
             const CHUNK = 16384;
             while (offset < file.size) {
@@ -219,7 +262,8 @@ const firebaseConfig = {
             }
             dc.send("DONE");
         }
-        document.getElementById('currentStatus').innerText = "✅ Files Sent!";
+        document.getElementById('currentStatus').innerText = "✅ All Files Sent Successfully!";
+        setTimeout(() => { if (pc) pc.close(); }, 2000); // Close connection after complete
     }
 
     // --- RECEIVER ---
@@ -233,7 +277,12 @@ const firebaseConfig = {
         lockUI();
         document.getElementById('currentStatus').innerText = "Connecting...";
         pc = new RTCPeerConnection(rtcConfig);
-        pc.oniceconnectionstatechange = () => { if (pc.iceConnectionState === "connected") db.goOffline(); };
+        
+        pc.oniceconnectionstatechange = () => { 
+            if (pc.iceConnectionState === "connected") {
+                db.goOffline(); // Optimization: Disconnect from Firebase instantly
+            }
+        };
 
         pc.ondatachannel = e => {
             let meta, chunks = [], received = 0;
@@ -262,7 +311,9 @@ const firebaseConfig = {
         await pc.setLocalDescription(answer);
         roomRef.child('answer').set({ sdp: answer.sdp, type: answer.type });
 
-        pc.onicecandidate = e => e.candidate && roomRef.child('rCand').push(e.candidate.toJSON());
+        pc.onicecandidate = e => {
+            if (e.candidate) roomRef.child('rCand').push(e.candidate.toJSON());
+        };
         roomRef.child('rCand').on('child_added', snap => pc.addIceCandidate(new RTCIceCandidate(snap.val())));
     }
 </script>
