@@ -114,30 +114,25 @@
 
 <script>
     // --- FIREBASE CONFIG ---
+const firebaseConfig = {
 
+  apiKey: "AIzaSyBogCw9T7aR5nEyUmOOKEPEoI12hQn0sdQ",
 
-    const firebaseConfig = {
+  authDomain: "dineshare-777.firebaseapp.com",
 
-  apiKey: "AIzaSyA-NhlaD3XRLKEf_y6xCMOElXnx5IVWhIg",
+  projectId: "dineshare-777",
 
-  authDomain: "dineshare-web.firebaseapp.com",
+  storageBucket: "dineshare-777.firebasestorage.app",
 
-  databaseURL: "https://dineshare-web-default-rtdb.firebaseio.com",
+  messagingSenderId: "550153382278",
 
-  projectId: "dineshare-web",
+  appId: "1:550153382278:web:87afc164c90ed260f2e407",
 
-  storageBucket: "dineshare-web.firebasestorage.app",
-
-  messagingSenderId: "456148087993",
-
-  appId: "1:456148087993:web:041e5569a4722b64795768",
-
-  measurementId: "G-633V93EBW6"
+  measurementId: "G-67D64MYS4D"
 
 };
 
 
-    
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     
@@ -147,8 +142,13 @@
     let pc, dc, files = [], expirationTimer;
     let roomRefGlobal = null;
 
-    // (PWA Service Worker registration removed)
+    // --- CLEANUP ON TAB CLOSE ---
+    window.addEventListener('beforeunload', () => {
+        if (roomRefGlobal) roomRefGlobal.remove(); // Delete Firebase data
+        if (pc) pc.close(); // Kill P2P connection
+    });
 
+    // --- UI LOGIC ---
     function setMode(mode) {
         document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -174,27 +174,26 @@
         try {
             const stats = await peerConnection.getStats();
             let isLocal = false;
-            
             stats.forEach(report => {
                 if (report.type === 'candidate-pair' && report.state === 'succeeded') {
-                    const localCandidate = stats.get(report.localCandidateId);
-                    const remoteCandidate = stats.get(report.remoteCandidateId);
-                    // If both candidates are 'host', it's a true local network connection
-                    if (localCandidate && remoteCandidate) {
-                        if (localCandidate.candidateType === 'host' && remoteCandidate.candidateType === 'host') {
-                            isLocal = true;
-                        }
+                    const local = stats.get(report.localCandidateId);
+                    const remote = stats.get(report.remoteCandidateId);
+                    if (local && remote && local.candidateType === 'host' && remote.candidateType === 'host') {
+                        isLocal = true;
                     }
                 }
             });
             return isLocal;
-        } catch (e) {
-            return false; // Assume internet if stats fail
-        }
+        } catch (e) { return false; }
     }
 
     // --- SENDER ---
     async function initSender() {
+        if (!navigator.onLine) {
+            alert("❌ No internet connection. You need internet to generate a connection code.");
+            return;
+        }
+
         lockUI();
         const code = Math.random().toString(36).substring(2, 8).toUpperCase();
         document.getElementById('codeDisplay').innerText = code;
@@ -204,11 +203,17 @@
         pc = new RTCPeerConnection(rtcConfig);
         dc = pc.createDataChannel("dineData");
         
-        // When Data Channel is ready, check if it's local before sending
+        pc.oniceconnectionstatechange = () => {
+            if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
+                document.getElementById('currentStatus').innerText = "❌ Connection Lost! Peer disconnected.";
+                document.getElementById('currentStatus').style.color = "var(--error)";
+            }
+        };
+
         dc.onopen = async () => {
-            db.goOffline(); // Optimization: Disconnect from Firebase instantly
+            db.goOffline(); // Disconnect from Firebase instantly
             clearInterval(expirationTimer);
-            if (roomRefGlobal) roomRefGlobal.remove(); // Cleanup database
+            if (roomRefGlobal) roomRefGlobal.remove(); 
 
             const local = await isLocalConnection(pc);
             
@@ -226,7 +231,13 @@
         roomRefGlobal = roomRef;
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
-        await roomRef.set({ offer: { sdp: offer.sdp, type: offer.type } });
+        
+        try {
+            await roomRef.set({ offer: { sdp: offer.sdp, type: offer.type } });
+        } catch (err) {
+            alert("❌ Failed to connect to signaling server. Please check your network.");
+            return;
+        }
 
         let timeLeft = 60;
         expirationTimer = setInterval(() => {
@@ -261,12 +272,15 @@
         document.getElementById('pCont').style.display = 'block';
         
         for (let file of files) {
+            if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") break;
+
             document.getElementById('currentStatus').innerText = `Sending: ${file.name}`;
             dc.send(JSON.stringify({ name: file.name, size: file.size, type: file.type }));
             
             let offset = 0;
             const CHUNK = 16384;
             while (offset < file.size) {
+                if (pc.iceConnectionState === "disconnected") break; 
                 if (dc.bufferedAmount > 1000000) await new Promise(r => setTimeout(r, 45));
                 const buf = await file.slice(offset, offset + CHUNK).arrayBuffer();
                 dc.send(buf);
@@ -275,59 +289,78 @@
             }
             dc.send("DONE");
         }
-        document.getElementById('currentStatus').innerText = "✅ All Files Sent Successfully!";
-        setTimeout(() => { if (pc) pc.close(); }, 2000); // Close connection after complete
+        
+        if (pc.iceConnectionState === "connected") {
+            document.getElementById('currentStatus').innerText = "✅ All Files Sent Successfully!";
+            setTimeout(() => { if (pc) pc.close(); }, 2000);
+        }
     }
 
     // --- RECEIVER ---
     async function initReceiver() {
+        if (!navigator.onLine) {
+            alert("❌ No internet connection. You need internet to join a room.");
+            return;
+        }
+
         const code = document.getElementById('joinCode').value.toUpperCase();
         if(!code) return;
-        const roomRef = db.ref('dineshare_rooms/' + code);
-        const snap = await roomRef.child('offer').once('value');
-        if(!snap.exists()) return alert("Code Expired or Invalid");
-
-        lockUI();
-        document.getElementById('currentStatus').innerText = "Connecting...";
-        pc = new RTCPeerConnection(rtcConfig);
         
-        pc.oniceconnectionstatechange = () => { 
-            if (pc.iceConnectionState === "connected") {
-                db.goOffline(); // Optimization: Disconnect from Firebase instantly
-            }
-        };
+        const roomRef = db.ref('dineshare_rooms/' + code);
+        roomRefGlobal = roomRef;
 
-        pc.ondatachannel = e => {
-            let meta, chunks = [], received = 0;
-            document.getElementById('pCont').style.display = 'block';
-            e.channel.onmessage = msg => {
-                if (typeof msg.data === 'string') {
-                    if (msg.data === "DONE") {
-                        const blob = new Blob(chunks, { type: meta.type });
-                        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = meta.name; a.click();
-                        chunks = []; received = 0;
-                        document.getElementById('currentStatus').innerText = "✅ Download Complete";
-                    } else {
-                        meta = JSON.parse(msg.data);
-                        document.getElementById('currentStatus').innerText = `Receiving: ${meta.name}`;
-                    }
-                } else {
-                    chunks.push(msg.data);
-                    received += msg.data.byteLength;
-                    document.getElementById('pBar').style.width = (received / meta.size * 100) + '%';
+        try {
+            const snap = await roomRef.child('offer').once('value');
+            if(!snap.exists()) return alert("❌ Code Expired or Invalid");
+            
+            lockUI();
+            document.getElementById('currentStatus').innerText = "Connecting...";
+            pc = new RTCPeerConnection(rtcConfig);
+            
+            pc.oniceconnectionstatechange = () => { 
+                if (pc.iceConnectionState === "connected") {
+                    db.goOffline(); 
+                } else if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
+                    document.getElementById('currentStatus').innerText = "❌ Connection Lost! Sender disconnected.";
+                    document.getElementById('currentStatus').style.color = "var(--error)";
                 }
             };
-        };
 
-        await pc.setRemoteDescription(new RTCSessionDescription(snap.val()));
-        const answer = await pc.createAnswer();
-        await pc.setLocalDescription(answer);
-        roomRef.child('answer').set({ sdp: answer.sdp, type: answer.type });
+            pc.ondatachannel = e => {
+                let meta, chunks = [], received = 0;
+                document.getElementById('pCont').style.display = 'block';
+                e.channel.onmessage = msg => {
+                    if (typeof msg.data === 'string') {
+                        if (msg.data === "DONE") {
+                            const blob = new Blob(chunks, { type: meta.type });
+                            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = meta.name; a.click();
+                            chunks = []; received = 0;
+                            document.getElementById('currentStatus').innerText = "✅ Download Complete";
+                        } else {
+                            meta = JSON.parse(msg.data);
+                            document.getElementById('currentStatus').innerText = `Receiving: ${meta.name}`;
+                        }
+                    } else {
+                        chunks.push(msg.data);
+                        received += msg.data.byteLength;
+                        document.getElementById('pBar').style.width = (received / meta.size * 100) + '%';
+                    }
+                };
+            };
 
-        pc.onicecandidate = e => {
-            if (e.candidate) roomRef.child('rCand').push(e.candidate.toJSON());
-        };
-        roomRef.child('rCand').on('child_added', snap => pc.addIceCandidate(new RTCIceCandidate(snap.val())));
+            await pc.setRemoteDescription(new RTCSessionDescription(snap.val()));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            roomRef.child('answer').set({ sdp: answer.sdp, type: answer.type });
+
+            pc.onicecandidate = e => {
+                if (e.candidate) roomRef.child('rCand').push(e.candidate.toJSON());
+            };
+            roomRef.child('rCand').on('child_added', snap => pc.addIceCandidate(new RTCIceCandidate(snap.val())));
+
+        } catch (err) {
+            alert("❌ Failed to communicate with server. Check connection.");
+        }
     }
 </script>
 </body>
