@@ -6,6 +6,7 @@
     <title>DineShare | P2P File Transfer</title>
     
     <meta name="theme-color" content="#f97316">
+    <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/2885/2885417.png" type="image/png">
 
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
@@ -104,21 +105,28 @@
         </div>
     </div>
 
-    <div class="ds-sys-footer-info" id="sys-status-node">
-        <script type="text/javascript">
-            atOptions = { 'key' : 'YOUR_ADSTERRA_KEY', 'format' : 'iframe', 'height' : 250, 'width' : 300, 'params' : {} };
-        </script>
-        <script type="text/javascript" src="//www.highperformanceformat.com/YOUR_ID/invoke.js"></script>
     </div>
-</div>
 
 <script>
-    // --- FIREBASE CONFIG ---
-const firebaseConfig = {
+    // --- KILL GHOST SERVICE WORKERS (Fixes network interception errors) ---
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for(let registration of registrations) {
+                registration.unregister();
+            }
+        });
+    }
+
+    // --- FIREBASE CONFIG (Make sure to put your real keys here) ---
+
+
+    const firebaseConfig = {
 
   apiKey: "AIzaSyBogCw9T7aR5nEyUmOOKEPEoI12hQn0sdQ",
 
   authDomain: "dineshare-777.firebaseapp.com",
+
+  databaseURL: "https://dineshare-777-default-rtdb.firebaseio.com",
 
   projectId: "dineshare-777",
 
@@ -132,7 +140,6 @@ const firebaseConfig = {
 
 };
 
-
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     
@@ -144,8 +151,8 @@ const firebaseConfig = {
 
     // --- CLEANUP ON TAB CLOSE ---
     window.addEventListener('beforeunload', () => {
-        if (roomRefGlobal) roomRefGlobal.remove(); // Delete Firebase data
-        if (pc) pc.close(); // Kill P2P connection
+        if (roomRefGlobal) roomRefGlobal.remove(); 
+        if (pc) pc.close(); 
     });
 
     // --- UI LOGIC ---
