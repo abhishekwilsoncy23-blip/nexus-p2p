@@ -5,9 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DineShare | P2P File Transfer</title>
     
-    <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#f97316">
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2885/2885417.png">
 
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
@@ -116,15 +114,30 @@
 
 <script>
     // --- FIREBASE CONFIG ---
+
+
     const firebaseConfig = {
-        apiKey: "YOUR_API_KEY",
-        authDomain: "YOUR_PROJECT.firebaseapp.com",
-        databaseURL: "https://YOUR_PROJECT.firebaseio.com",
-        projectId: "YOUR_PROJECT_ID",
-        storageBucket: "YOUR_PROJECT.appspot.com",
-        messagingSenderId: "YOUR_ID",
-        appId: "YOUR_APP_ID"
-    };
+
+  apiKey: "AIzaSyA-NhlaD3XRLKEf_y6xCMOElXnx5IVWhIg",
+
+  authDomain: "dineshare-web.firebaseapp.com",
+
+  databaseURL: "https://dineshare-web-default-rtdb.firebaseio.com",
+
+  projectId: "dineshare-web",
+
+  storageBucket: "dineshare-web.firebasestorage.app",
+
+  messagingSenderId: "456148087993",
+
+  appId: "1:456148087993:web:041e5569a4722b64795768",
+
+  measurementId: "G-633V93EBW6"
+
+};
+
+
+    
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
     
@@ -134,7 +147,7 @@
     let pc, dc, files = [], expirationTimer;
     let roomRefGlobal = null;
 
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+    // (PWA Service Worker registration removed)
 
     function setMode(mode) {
         document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
